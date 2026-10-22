@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/DavidAEriksson/deltaview/compare/v1.0.0...v1.1.0) (2026-10-22)
+
+
+### Features
+
+* **overlay:** decision colors, reset, compact chips, movable toolbar, close panel ([c6c969d](https://github.com/DavidAEriksson/deltaview/commit/c6c969d0382c71a1e7918eba3df580632718a4f4))
+
 ## 1.0.0 (2026-10-22)
 
 
