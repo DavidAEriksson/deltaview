@@ -54,6 +54,10 @@ test("setItems requires non-empty summary", () => {
   assert.match(err(() => setItems(mk(), [item("i1", ["h1", "h2"], { summary: "  " })])), /i1 missing summary/);
 });
 
+test("setItems rejects duplicate item id", () => {
+  assert.match(err(() => setItems(mk(), [item("i1", ["h1"]), item("i1", ["h2"])])), /duplicate item id i1/);
+});
+
 const ready = () => setItems(mk(), [item("i1", ["h1", "h2"])]);
 
 test("applyDecision sets decidedAt", () => {

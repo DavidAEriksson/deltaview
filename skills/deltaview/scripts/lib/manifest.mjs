@@ -27,8 +27,10 @@ export function saveManifest(p, manifest) {
 
 export function setItems(manifest, items) {
   const problems = [];
-  const covered = {};
+  const covered = {}, ids = new Set();
   for (const it of items) {
+    if (ids.has(it.id)) problems.push(`duplicate item id ${it.id}`);
+    ids.add(it.id);
     if (!TIERS.includes(it.tier)) problems.push(`${it.id} invalid tier ${it.tier}`);
     if (!it.summary?.trim()) problems.push(`${it.id} missing summary`);
     if (it.tier === "direct" || it.tier === "indirect") {

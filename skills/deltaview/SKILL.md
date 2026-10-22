@@ -44,7 +44,7 @@ Run `DV resume --dir <main>/.deltaview/reviews --ref <ref> --head <headSha>`.
 - If it prints a path, that is `<manifest>`. Tell the user "Resuming the unfinished review from <manifest>; earlier decisions are kept." Do step 4, then skip to step 8.
   `resume` only returns an `in_progress` manifest with this head sha AND at least one item; one left with no items (the earlier run stopped before step 7 finished) is ignored and a fresh review starts.
 - If it prints nothing but this lists a file (an unfinished review with items, for another commit):
-  `node -e 'const fs=require("fs"),[d,s]=process.argv.slice(1);try{for(const f of fs.readdirSync(d))if(f.startsWith(s+"-")&&f.endsWith(".json")){const m=JSON.parse(fs.readFileSync(d+"/"+f));if(m.status==="in_progress"&&m.items?.length)console.log(f)}}catch{}' <main>/.deltaview/reviews <slug>`
+  `node -e 'const fs=require("fs"),[d,s,r]=process.argv.slice(1);try{for(const f of fs.readdirSync(d))if(f.startsWith(s+"-")&&f.endsWith(".json")){const m=JSON.parse(fs.readFileSync(d+"/"+f));if(m.ref===r&&m.status==="in_progress"&&m.items?.length)console.log(f)}}catch{}' <main>/.deltaview/reviews <slug> '<ref>'`
   tell the user: "There is an unfinished review of `<ref>` for an older commit; its decisions were not carried over. Starting a fresh review."
 
 ## 4. Checkout

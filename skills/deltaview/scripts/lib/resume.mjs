@@ -11,7 +11,7 @@ export function findResumable(reviewsDir, ref, headSha) {
     const p = path.join(reviewsDir, f);
     try {
       const m = JSON.parse(fs.readFileSync(p, "utf8"));
-      if (m.status === "in_progress" && m.headSha === headSha && m.items?.length) return p; // no items = analysis never finished
+      if (m.ref === ref && m.status === "in_progress" && m.headSha === headSha && m.items?.length) return p; // no items = analysis never finished
     } catch { /* skip unreadable manifest */ }
   }
   return null;
