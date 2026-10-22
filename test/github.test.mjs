@@ -102,3 +102,8 @@ test("postReview rejects with stderr when run fails", async () => {
   const run = async () => { throw new Error("HTTP 422: bad line"); };
   await assert.rejects(postReview(fx(), run), /HTTP 422: bad line/);
 });
+
+test("defaultRun: child exits before reading stdin -> rejects with stderr, no EPIPE crash", async () => {
+  const { defaultRun } = await import("../skills/deltaview/scripts/lib/github.mjs");
+  await assert.rejects(defaultRun("sh", ["-c", "echo err >&2; exit 1"], "x".repeat(4 * 1024 * 1024)), /^Error: err$/);
+});

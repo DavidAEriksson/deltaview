@@ -53,6 +53,7 @@ export const defaultRun = (cmd, args, input) =>
   new Promise((resolve, reject) => {
     const p = execFile(cmd, args, (err, stdout, stderr) =>
       err ? reject(new Error(stderr?.trim() || err.message)) : resolve({ stdout }));
+    p.stdin.on("error", () => {}); // EPIPE if gh exits early; the exit callback reports the error
     p.stdin.end(input);
   });
 
