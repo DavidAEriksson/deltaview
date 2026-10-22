@@ -118,7 +118,7 @@
     },
     "h6": {
       "id": "h6",
-      "file": "/dev/null",
+      "file": "src/old.ts",
       "oldFile": "src/old.ts",
       "status": "deleted",
       "oldStart": 1,
