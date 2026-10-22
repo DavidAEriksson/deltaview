@@ -43,3 +43,7 @@ npm test
 ```
 
 No dependencies: the toolkit in `skills/deltaview/scripts/` uses Node built-ins only.
+
+## Releases
+
+Versions follow [semver](https://semver.org) and are cut by [release-please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org) on `main` (`fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major). It keeps an open release PR that bumps `package.json`, `.claude-plugin/plugin.json` and `CHANGELOG.md`; merging it tags the release and publishes a GitHub release.
