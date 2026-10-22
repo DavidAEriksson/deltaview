@@ -172,3 +172,31 @@ test("unreachable target -> 502 with message", async () => {
     assert.equal(r.text, `Deltaview: dev server not reachable at ${target}`);
   } finally { await close(server); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+const prManifest = () => baseManifest({ pr: { number: 1, url: "u", isAuthor: false } });
+test("concurrent double finish posts once; later finish returns existing url", async () => {
+  let calls = 0, release;
+  const gate = new Promise((r) => { release = r; });
+  const s = await setup({ manifest: prManifest(), postReview: async () => { calls++; await gate; return { url: "R" }; } });
+  try {
+    const a = req(s.port, "/__deltaview/finish", { method: "POST" });
+    await new Promise((r) => setTimeout(r, 100));
+    const b = await req(s.port, "/__deltaview/finish", { method: "POST" });
+    assert.equal(b.status, 409);
+    release();
+    assert.equal((await a).status, 200);
+    const c = await req(s.port, "/__deltaview/finish", { method: "POST" });
+    assert.deepEqual([c.status, JSON.parse(c.text)], [200, { reviewUrl: "R" }]);
+    assert.equal(calls, 1);
+  } finally { await s.cleanup(); }
+});
+
+test("finish after a failure can retry", async () => {
+  let calls = 0;
+  const s = await setup({ manifest: prManifest(), postReview: async () => { if (++calls === 1) throw new Error("x"); return { url: "R" }; } });
+  try {
+    assert.equal((await req(s.port, "/__deltaview/finish", { method: "POST" })).status, 502);
+    assert.equal((await req(s.port, "/__deltaview/finish", { method: "POST" })).status, 200);
+    assert.equal(calls, 2);
+  } finally { await s.cleanup(); }
+});

@@ -24,7 +24,7 @@ const readBody = (req) => new Promise((ok, no) => { const c = []; req.on("data",
 
 export function createServer({ manifestPath, target, postReview }) {
   const t = new URL(target);
-  let resolveFinished;
+  let resolveFinished, finishing = false;
   const finished = new Promise((r) => { resolveFinished = r; });
 
   async function api(req, res, name) {
@@ -49,13 +49,18 @@ export function createServer({ manifestPath, target, postReview }) {
       }
       if (req.method === "POST" && name === "finish") {
         const m = loadManifest(manifestPath);
+        if (m.status === "finished") return json(res, 200, { reviewUrl: m.reviewUrl });
+        if (finishing) return json(res, 409, { error: "finish already in progress" });
+        finishing = true;
         let url = null;
-        if (m.pr) {
-          try { url = (await postReview(m)).url; } catch (e) {
-            m.error = String(e?.message ?? e); saveManifest(manifestPath, m);
-            return json(res, 502, { error: m.error });
+        try {
+          if (m.pr) {
+            try { url = (await postReview(m)).url; } catch (e) {
+              m.error = String(e?.message ?? e); saveManifest(manifestPath, m);
+              return json(res, 502, { error: m.error });
+            }
           }
-        }
+        } finally { finishing = false; }
         Object.assign(m, { status: "finished", reviewUrl: url, error: null });
         saveManifest(manifestPath, m);
         json(res, 200, { reviewUrl: url });

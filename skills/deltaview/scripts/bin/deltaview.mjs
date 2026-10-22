@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { execFileSync } from "node:child_process";
 import { parseDiff } from "../lib/diff.mjs";
 import fs from "node:fs";
+import net from "node:net";
 import { createManifest, loadManifest, saveManifest, setItems } from "../lib/manifest.mjs";
 import { newEnvVars } from "../lib/envcheck.mjs";
 import { findResumable } from "../lib/resume.mjs";
@@ -72,9 +73,16 @@ function serve(argv) {
   for (const k of ["manifest", "target", "port"]) if (!v[k]) fail(`serve: missing --${k}`);
   const { server, finished } = createServer({ manifestPath: v.manifest, target: v.target, postReview });
   server.on("error", (e) => fail(e.code === "EADDRINUSE" ? `port ${v.port} is already in use` : e.message));
-  server.listen(Number(v.port), "127.0.0.1", () => {
+  // Same hostname as the dev server so cookies (scoped per host, not port) carry over; still loopback-only.
+  const host = new URL(v.target).hostname;
+  server.listen(Number(v.port), host.replace(/^\[|\]$/g, ""), () => {
     const port = server.address().port;
-    console.log(JSON.stringify({ proxyUrl: `http://127.0.0.1:${port}`, port }));
+    if (host === "localhost") { // localhost may resolve to either loopback family; serve both
+      const other = net.createServer((sock) => server.emit("connection", sock));
+      other.on("error", () => {}); // shortcut: IPv6 loopback may be unavailable, IPv4 alone then
+      other.listen(port, server.address().family === "IPv6" ? "127.0.0.1" : "::1");
+    }
+    console.log(JSON.stringify({ proxyUrl: `http://${host}:${port}`, port }));
   });
   finished.then((r) => { console.log(JSON.stringify({ done: true, ...r })); process.exit(0); });
 }
