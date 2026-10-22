@@ -1,0 +1,244 @@
+{
+  "version": 1,
+  "ref": "feat/fixture",
+  "target": "feat/fixture",
+  "baseSha": "aaa",
+  "headSha": "bbb",
+  "repo": "acme/shop",
+  "pr": null,
+  "tests": {
+    "command": "npm test",
+    "passed": true,
+    "summary": "42 passed"
+  },
+  "newEnvVars": [
+    "STRIPE_WEBHOOK_SECRET"
+  ],
+  "hunks": {
+    "h1": {
+      "id": "h1",
+      "file": "src/SaveButton.tsx",
+      "oldFile": "src/SaveButton.tsx",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "ctx",
+          "text": "export function SaveButton() {",
+          "oldLine": 9,
+          "newLine": 9
+        },
+        {
+          "type": "del",
+          "text": "  return <button>Save</button>;",
+          "oldLine": 10,
+          "newLine": null
+        },
+        {
+          "type": "del",
+          "text": "  // old",
+          "oldLine": 11,
+          "newLine": null
+        },
+        {
+          "type": "add",
+          "text": "  return <button disabled={busy}>Save order</button>;",
+          "oldLine": null,
+          "newLine": 10
+        },
+        {
+          "type": "add",
+          "text": "  // busy state",
+          "oldLine": null,
+          "newLine": 11
+        },
+        {
+          "type": "ctx",
+          "text": "}",
+          "oldLine": 12,
+          "newLine": 12
+        }
+      ]
+    },
+    "h2": {
+      "id": "h2",
+      "file": "src/OrderForm.tsx",
+      "oldFile": "src/OrderForm.tsx",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "ctx",
+          "text": "<form>",
+          "oldLine": 1,
+          "newLine": 1
+        },
+        {
+          "type": "add",
+          "text": "  <Field name=\"note\" />",
+          "oldLine": null,
+          "newLine": 2
+        },
+        {
+          "type": "ctx",
+          "text": "</form>",
+          "oldLine": 2,
+          "newLine": 3
+        }
+      ]
+    },
+    "h3": {
+      "id": "h3",
+      "file": "src/orders.handler.ts",
+      "oldFile": "src/orders.handler.ts",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "del",
+          "text": "  const limit = 10;",
+          "oldLine": 5,
+          "newLine": null
+        },
+        {
+          "type": "ctx",
+          "text": "  return list(limit);",
+          "oldLine": 6,
+          "newLine": 5
+        }
+      ]
+    },
+    "h4": {
+      "id": "h4",
+      "file": "src/Footer.tsx",
+      "oldFile": "src/Footer.tsx",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "add",
+          "text": "<small>footer</small>",
+          "oldLine": null,
+          "newLine": 1
+        }
+      ]
+    },
+    "h5": {
+      "id": "h5",
+      "file": "src/jobs/cleanup.ts",
+      "oldFile": "src/jobs/cleanup.ts",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "add",
+          "text": "export const cleanup = () => {};",
+          "oldLine": null,
+          "newLine": 1
+        }
+      ]
+    }
+  },
+  "items": [
+    {
+      "id": "i1",
+      "tier": "direct",
+      "title": "Save button",
+      "route": "/",
+      "selector": "[data-testid=save]",
+      "chain": [
+        "Save button",
+        "useSaveOrder()",
+        "POST /api/orders",
+        "orders.handler.ts"
+      ],
+      "affects": [
+        "Checkout > Pay button"
+      ],
+      "hunkIds": [
+        "h1",
+        "h2"
+      ],
+      "summary": "The Save button now disables while saving and reads Save order.",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": true,
+      "decision": null,
+      "comment": "",
+      "decidedAt": null
+    },
+    {
+      "id": "i2",
+      "tier": "indirect",
+      "title": "Orders table",
+      "route": "/orders.html",
+      "selector": "[data-testid=orders-table]",
+      "chain": [
+        "Orders table",
+        "GET /api/orders",
+        "orders.handler.ts"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h3"
+      ],
+      "summary": "Page size limit removed from the handler.",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": true,
+      "decision": null,
+      "comment": "",
+      "decidedAt": null
+    },
+    {
+      "id": "i3",
+      "tier": "backstage",
+      "title": "Nightly cleanup job",
+      "route": null,
+      "selector": null,
+      "chain": [
+        "cron",
+        "cleanup.ts"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h5"
+      ],
+      "summary": "New cleanup job.",
+      "howToReach": "Run npm run jobs:cleanup",
+      "appearsUnused": true,
+      "visuallyVerified": false,
+      "decision": null,
+      "comment": "",
+      "decidedAt": null
+    },
+    {
+      "id": "i4",
+      "tier": "direct",
+      "title": "Footer note (missing)",
+      "route": "/",
+      "selector": "[data-testid=does-not-exist]",
+      "chain": [],
+      "affects": [],
+      "hunkIds": [
+        "h4"
+      ],
+      "summary": "Selector matches nothing on this page.",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": true,
+      "decision": null,
+      "comment": "",
+      "decidedAt": null
+    }
+  ],
+  "status": "in_progress",
+  "reviewUrl": null,
+  "error": null,
+  "createdAt": "2026-10-22T00:00:00.000Z"
+}
