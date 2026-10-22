@@ -1,0 +1,260 @@
+{
+  "version": 1,
+  "ref": "pr-7",
+  "target": "pr-7",
+  "baseSha": "aaa",
+  "headSha": "bbb",
+  "repo": "acme/shop",
+  "pr": {
+    "number": 7,
+    "url": "https://github.com/acme/shop/pull/7",
+    "isAuthor": false
+  },
+  "tests": {
+    "command": "npm test",
+    "passed": true,
+    "summary": "42 passed"
+  },
+  "newEnvVars": [
+    "STRIPE_WEBHOOK_SECRET"
+  ],
+  "hunks": {
+    "h1": {
+      "id": "h1",
+      "file": "src/a.tsx",
+      "oldFile": "src/a.tsx",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "ctx",
+          "text": "x",
+          "oldLine": 9,
+          "newLine": 9
+        },
+        {
+          "type": "add",
+          "text": "x",
+          "oldLine": null,
+          "newLine": 10
+        },
+        {
+          "type": "add",
+          "text": "x",
+          "oldLine": null,
+          "newLine": 11
+        },
+        {
+          "type": "add",
+          "text": "x",
+          "oldLine": null,
+          "newLine": 12
+        }
+      ]
+    },
+    "h2": {
+      "id": "h2",
+      "file": "src/b.tsx",
+      "oldFile": "src/b.tsx",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "del",
+          "text": "x",
+          "oldLine": 4,
+          "newLine": null
+        },
+        {
+          "type": "add",
+          "text": "x",
+          "oldLine": null,
+          "newLine": 4
+        }
+      ]
+    },
+    "h3": {
+      "id": "h3",
+      "file": "src/api.ts",
+      "oldFile": "src/api.ts",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "add",
+          "text": "x",
+          "oldLine": null,
+          "newLine": 20
+        }
+      ]
+    },
+    "h4": {
+      "id": "h4",
+      "file": "logo.png",
+      "oldFile": "logo.png",
+      "status": "binary",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": []
+    },
+    "h5": {
+      "id": "h5",
+      "file": "src/c.tsx",
+      "oldFile": "src/c.tsx",
+      "status": "modified",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "add",
+          "text": "x",
+          "oldLine": null,
+          "newLine": 3
+        }
+      ]
+    },
+    "h6": {
+      "id": "h6",
+      "file": "/dev/null",
+      "oldFile": "src/old.ts",
+      "status": "deleted",
+      "oldStart": 1,
+      "newStart": 1,
+      "lines": [
+        {
+          "type": "del",
+          "text": "x",
+          "oldLine": 1,
+          "newLine": null
+        },
+        {
+          "type": "del",
+          "text": "x",
+          "oldLine": 2,
+          "newLine": null
+        },
+        {
+          "type": "del",
+          "text": "x",
+          "oldLine": 3,
+          "newLine": null
+        }
+      ]
+    }
+  },
+  "items": [
+    {
+      "id": "i1",
+      "tier": "direct",
+      "title": "Save button",
+      "route": "/x",
+      "selector": "[data-testid=x]",
+      "chain": [
+        "Save button"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h1"
+      ],
+      "summary": "s",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": true,
+      "decision": "approved",
+      "comment": "",
+      "decidedAt": null
+    },
+    {
+      "id": "i2",
+      "tier": "indirect",
+      "title": "Cart total",
+      "route": "/x",
+      "selector": "[data-testid=x]",
+      "chain": [
+        "Cart total"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h2"
+      ],
+      "summary": "s",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": true,
+      "decision": "rejected",
+      "comment": "Total wrong",
+      "decidedAt": null
+    },
+    {
+      "id": "i3",
+      "tier": "backstage",
+      "title": "Orders API",
+      "route": null,
+      "selector": null,
+      "chain": [
+        "Orders API"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h3",
+        "h4"
+      ],
+      "summary": "s",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": false,
+      "decision": "comment",
+      "comment": "Check the index",
+      "decidedAt": null
+    },
+    {
+      "id": "i4",
+      "tier": "direct",
+      "title": "Pay button",
+      "route": "/x",
+      "selector": "[data-testid=x]",
+      "chain": [
+        "Pay button"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h5"
+      ],
+      "summary": "s",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": true,
+      "decision": null,
+      "comment": "",
+      "decidedAt": null
+    },
+    {
+      "id": "i5",
+      "tier": "backstage",
+      "title": "Remove old",
+      "route": null,
+      "selector": null,
+      "chain": [
+        "Remove old"
+      ],
+      "affects": [],
+      "hunkIds": [
+        "h6"
+      ],
+      "summary": "s",
+      "howToReach": null,
+      "appearsUnused": false,
+      "visuallyVerified": false,
+      "decision": "approved",
+      "comment": "",
+      "decidedAt": null
+    }
+  ],
+  "status": "in_progress",
+  "reviewUrl": null,
+  "error": null,
+  "createdAt": "2026-01-01T00:00:00.000Z"
+}
