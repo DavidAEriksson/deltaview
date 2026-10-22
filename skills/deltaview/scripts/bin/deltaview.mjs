@@ -9,7 +9,7 @@ import { findResumable } from "../lib/resume.mjs";
 
 const fail = (msg) => { console.error(`deltaview: ${msg}`); process.exit(1); };
 
-const git = (repo, ...a) => execFileSync("git", ["-C", repo, "-c", "core.quotepath=false", ...a], { encoding: "utf8", maxBuffer: 1 << 30 });
+const git = (repo, ...a) => execFileSync("git", ["-C", repo, "-c", "core.quotepath=false", ...a], { encoding: "utf8", maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "pipe"] });
 const example = (repo, sha) => ["", ".sample", ".template"].map((x) => {
   try { return git(repo, "show", `${sha}:.env${x === "" ? ".example" : x}`); } catch { return ""; } // missing file counts as empty
 }).join("\n");
