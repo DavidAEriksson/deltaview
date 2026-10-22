@@ -1,0 +1,11 @@
+{
+  "name": "deltaview",
+  "owner": { "name": "David Eriksson" },
+  "plugins": [
+    {
+      "name": "deltaview",
+      "source": "./",
+      "description": "Visual, in-browser review of a branch's changes with overlays on the running app"
+    }
+  ]
+}

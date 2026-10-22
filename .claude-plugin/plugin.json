@@ -1,0 +1,7 @@
+{
+  "name": "deltaview",
+  "version": "0.1.0",
+  "description": "Visual, in-browser review of a branch's changes with overlays on the running app",
+  "author": { "name": "David Eriksson" },
+  "repository": "https://github.com/DavidAEriksson/deltaview"
+}
