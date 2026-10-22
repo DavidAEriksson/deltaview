@@ -66,6 +66,11 @@ test("applyDecision sets decidedAt", () => {
   assert.ok(m.items[0].decidedAt);
 });
 
+test("applyDecision null resets the item to undecided", () => {
+  const m = applyDecision(applyDecision(ready(), { itemId: "i1", decision: "comment", comment: "c" }), { itemId: "i1", decision: null });
+  assert.deepEqual([m.items[0].decision, m.items[0].comment, m.items[0].decidedAt], [null, "", null]);
+});
+
 test("applyDecision rejected without reason throws", () => {
   assert.throws(() => applyDecision(ready(), { itemId: "i1", decision: "rejected", comment: "  " }), /reason/);
 });

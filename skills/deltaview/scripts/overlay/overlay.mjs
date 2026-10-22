@@ -13,13 +13,16 @@ button{cursor:pointer;background:#162430;color:#5ea1f0;border:1px solid #2c4155;
 button:hover:not(:disabled){background:#1d3144}button:disabled{opacity:.4;cursor:not-allowed}
 button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1520;font-weight:700}
 .menu{position:absolute;bottom:100%;left:0;margin-bottom:6px;width:380px;max-width:calc(100vw - 24px);max-height:60vh;overflow:auto;background:#111;border:1px solid #2c4155;padding:6px;pointer-events:auto}
+.menu.down{bottom:auto;top:100%;margin:6px 0 0}
 .menu h4{margin:8px 0 2px;color:#8a96a3;font-weight:400}
 .row{display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0;background:none;color:#cfd8e3;padding:4px}
 .row:hover{background:#162430}
 .badge{color:#d9822b;border:1px solid #d9822b;border-radius:3px;padding:0 4px;font-size:10px}
 .outline{position:fixed;border:2px solid #5ea1f0;background:rgba(94,161,240,.08);display:none}
 .outline.open{border-color:#fff;background:rgba(94,161,240,.18)}
-.outline.done{border-color:#5fb584}.outline.rej{border-color:#f08080}
+.outline.ok{border-color:#5fb584}.outline.rej{border-color:#f08080}.outline.cmt{border-color:#d9822b}
+.outline.ok .chip{color:#5fb584}.outline.rej .chip{color:#f08080}.outline.cmt .chip{color:#d9822b}
+.grip{cursor:move;color:#8a96a3;user-select:none;touch-action:none;padding:0 2px}
 .chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 0 0 6px;white-space:nowrap;line-height:16px;font-size:11px}
 .chip button{pointer-events:auto;margin-left:4px;padding:0 4px;border:0;border-left:1px solid #2c4155;border-radius:0;line-height:16px;font-size:11px}
 .x{position:sticky;top:0;float:right;margin:6px;z-index:1}
@@ -53,7 +56,8 @@ const api = async (path, body) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 
-let barOpen = false, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null;
+let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null;
+try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
 const drafts = {}; // itemId -> { choice, comment, msg }
 const els = new Map(); // itemId -> resolved element
 const outlines = new Map(); // itemId -> outline div
@@ -133,7 +137,13 @@ function card(i) {
     i.affects.length > 0 && h("div", { class: "muted", textContent: "Affects: " + i.affects.join(", ") }),
     h("div", { class: "act" },
       h("div", { class: i.decision ? "ok" : "muted", textContent: i.decision ? "Decision: " + i.decision : "No decision yet" }),
-      h("div", {}, btns), ta, submit, msg));
+      h("div", {}, btns), ta, submit,
+      i.decision && h("button", { textContent: "Reset", title: "Clear the decision", style: "margin-left:8px", onclick: async () => {
+        const r = await api("decision", { itemId: i.id, decision: null });
+        if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); delete drafts[i.id]; render(); }
+        else { msg.textContent = r.body.error ?? "Could not reset"; }
+      } }),
+      msg));
 }
 
 function topbar() {
@@ -148,11 +158,13 @@ function topbar() {
     render();
   } });
   const full = barOpen;
-  return h("div", { class: "bar" },
-    menu && menuView(),
+  const bar = h("div", { class: "bar" },
+    menu && menuView(barPos && barPos.y < innerHeight / 2),
+    h("span", { class: "grip", textContent: "⠿", title: "Drag to move", onpointerdown: drag }),
     h("span", { class: "brand", textContent: "DELTAVIEW/" + M.ref }),
     h("span", { textContent: `${done}/${total} reviewed` }),
     h("button", { textContent: full ? "▾" : "▴", title: full ? "Collapse" : "Expand", onclick: () => { barOpen = !barOpen; menu = false; render(); } }),
+    h("button", { class: highlights ? "" : "sel", textContent: highlights ? "Hide highlights" : "Show highlights", onclick: () => { highlights = !highlights; outlineLayer.style.display = highlights ? "" : "none"; render(); } }),
     full && t && h("span", { class: t.passed ? "ok" : "bad", textContent: `tests: ${t.passed ? "passed" : "failed"} (${t.summary})` }),
     full && M.newEnvVars.length > 0 && h("span", { class: "warn", textContent: "New env vars: " + M.newEnvVars.join(", ") }),
     finishMsg && (finishMsg.url ? h("a", { href: finishMsg.url, target: "_blank", style: "color:#5fb584", textContent: "Review posted: " + finishMsg.url })
@@ -160,15 +172,31 @@ function topbar() {
     full && h("button", { textContent: "Items ▾", onclick: () => { menu = !menu; render(); } }),
     full && h("button", { class: drawer ? "sel" : "", textContent: "Backstage", onclick: () => { drawer = !drawer; menu = false; render(); } }),
     full && finish);
+  if (barPos) Object.assign(bar.style, { left: Math.min(barPos.x, innerWidth - 120) + "px", top: Math.min(barPos.y, innerHeight - 40) + "px", bottom: "auto" });
+  return bar;
 }
 
-function menuView() {
+function drag(e) {
+  const g = e.currentTarget, bar = g.parentElement, r = bar.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+  g.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    barPos = { x: Math.min(Math.max(0, ev.clientX - dx), innerWidth - bar.offsetWidth), y: Math.min(Math.max(0, ev.clientY - dy), innerHeight - bar.offsetHeight) };
+    Object.assign(bar.style, { left: barPos.x + "px", top: barPos.y + "px", bottom: "auto" });
+  };
+  g.addEventListener("pointermove", move);
+  g.addEventListener("pointerup", () => {
+    g.removeEventListener("pointermove", move);
+    try { localStorage.setItem("deltaview:bar", JSON.stringify(barPos)); } catch {}
+  }, { once: true });
+}
+
+function menuView(down) {
   const groups = new Map();
   for (const i of M.items) {
     const k = i.tier === "backstage" ? "Backstage" : i.route ?? "(no route)";
     (groups.get(k) ?? groups.set(k, []).get(k)).push(i);
   }
-  return h("div", { class: "menu" }, [...groups].map(([k, list]) => h("div", {}, h("h4", { textContent: k }),
+  return h("div", { class: down ? "menu down" : "menu" }, [...groups].map(([k, list]) => h("div", {}, h("h4", { textContent: k }),
     list.map((i) => h("button", { class: "row", onclick: () => openItem(i) },
       h("span", { class: i.decision ? "ok" : "muted", textContent: i.decision ? "✓" : "○" }),
       h("span", { textContent: i.title }),
@@ -200,9 +228,10 @@ function render() {
   for (const [id, o] of outlines) {
     if (!cur.has(id)) { o.remove(); outlines.delete(id); continue; }
     const i = byId(id);
-    o.className = "outline" + (id === openId ? " open" : "") + (i.decision === "rejected" ? " rej" : i.decision ? " done" : "");
+    o.className = "outline" + (id === openId ? " open" : "") + ({ approved: " ok", rejected: " rej", comment: " cmt" }[i.decision] ?? "");
     const [label, btn] = o.firstChild.children;
-    label.textContent = "DELTAVIEW/" + M.ref + (i.decision ? " ✓" : "");
+    // decided items collapse to a symbol so they stop covering the app
+    label.textContent = { approved: "✓", rejected: "✕", comment: "💬" }[i.decision] ?? "DELTAVIEW/" + M.ref;
     o.firstChild.title = btn.title = i.title;
     btn.ariaLabel = "Open " + i.title;
   }

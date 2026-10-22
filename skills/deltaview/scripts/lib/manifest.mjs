@@ -59,6 +59,8 @@ export function applyDecision(manifest, { itemId, decision, comment = "" }) {
   if (manifest.status === "finished") throw new Error("review is finished");
   const it = manifest.items.find((i) => i.id === itemId);
   if (!it) throw new Error(`unknown item ${itemId}`);
+  // null resets the item to undecided
+  if (decision === null) return Object.assign(it, { decision: null, comment: "", decidedAt: null }), manifest;
   if (!DECISIONS.includes(decision)) throw new Error(`invalid decision ${decision}`);
   if (decision === "rejected" && !comment.trim()) throw new Error("rejecting requires a reason");
   Object.assign(it, { decision, comment, decidedAt: new Date().toISOString() });
