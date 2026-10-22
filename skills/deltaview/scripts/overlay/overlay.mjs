@@ -20,7 +20,8 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .outline{position:fixed;border:2px solid #5ea1f0;background:rgba(94,161,240,.08);display:none}
 .outline.open{border-color:#fff;background:rgba(94,161,240,.18)}
 .outline.done{border-color:#5fb584}.outline.rej{border-color:#f08080}
-.chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 6px;pointer-events:auto;cursor:pointer;white-space:nowrap}
+.chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 0 0 6px;white-space:nowrap;line-height:16px;font-size:11px}
+.chip button{pointer-events:auto;margin-left:4px;padding:0 4px;border:0;border-left:1px solid #2c4155;border-radius:0;line-height:16px;font-size:11px}
 .panel{position:fixed;width:440px;max-height:calc(100vh - 16px);overflow:auto;background:#111;border:1px solid #2c4155;pointer-events:auto}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:480px;overflow:auto;background:#111;border-left:1px solid #2c4155;pointer-events:auto}
 .card{padding:10px;border-bottom:1px solid #2c4155}
@@ -63,6 +64,8 @@ root.append(h("style", { textContent: CSS }));
 const outlineLayer = h("div", { class: "layer" });
 const uiLayer = h("div", { class: "layer" });
 root.append(outlineLayer, uiLayer);
+// typing in the overlay must not trigger the app's hotkeys
+for (const t of ["keydown", "keyup", "keypress"]) host.addEventListener(t, (e) => e.stopPropagation());
 
 const byId = (id) => M.items.find((i) => i.id === id);
 const onRoute = () => itemsForPath(M.items, location.pathname);
@@ -182,7 +185,8 @@ function render() {
   uiLayer.replaceChildren(...[topbar(), drawer && h("div", { class: "drawer" }, M.items.filter((i) => i.tier === "backstage").map(card)), panelView()].filter(Boolean));
   for (const i of onRoute()) {
     if (outlines.has(i.id)) continue;
-    const chip = h("div", { class: "chip", onclick: () => openItem(i) });
+    // only the small button takes clicks, so a closed overlay doesn't cover the app's controls
+    const chip = h("div", { class: "chip" }, h("span"), h("button", { textContent: "open", onclick: () => openItem(i) }));
     const o = h("div", { class: "outline" }, chip);
     outlines.set(i.id, o);
     outlineLayer.append(o);
@@ -192,7 +196,10 @@ function render() {
     if (!cur.has(id)) { o.remove(); outlines.delete(id); continue; }
     const i = byId(id);
     o.className = "outline" + (id === openId ? " open" : "") + (i.decision === "rejected" ? " rej" : i.decision ? " done" : "");
-    o.firstChild.textContent = i.title + (i.decision ? " ✓" : "");
+    const [label, btn] = o.firstChild.children;
+    label.textContent = "DELTAVIEW/" + M.ref + (i.decision ? " ✓" : "");
+    o.firstChild.title = btn.title = i.title;
+    btn.ariaLabel = "Open " + i.title;
   }
 }
 
@@ -201,6 +208,15 @@ function place() {
     const el = els.get(id), r = el?.isConnected && el.getBoundingClientRect();
     if (!r || (!r.width && !r.height)) { o.style.display = "none"; continue; }
     Object.assign(o.style, { display: "block", left: r.left - 3 + "px", top: r.top - 3 + "px", width: r.width + 6 + "px", height: r.height + 6 + "px" });
+  }
+  // hide a chip that collides with an earlier one; its item stays reachable from the Items menu
+  const shown = [];
+  for (const o of outlines.values()) {
+    if (o.style.display === "none") continue;
+    const c = o.firstChild, b = c.getBoundingClientRect();
+    const hit = shown.some((a) => b.left < a.right && a.left < b.right && b.top < a.bottom && a.top < b.bottom);
+    c.style.visibility = hit ? "hidden" : "";
+    if (!hit) shown.push(b);
   }
   const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.getBoundingClientRect();
   if (p) {
@@ -222,7 +238,9 @@ async function start() {
   let t;
   new MutationObserver(() => { if (!t) t = setTimeout(() => { t = null; const sig = location.pathname + [...els.keys()].join(); resolveAll(); if (location.pathname + [...els.keys()].join() !== sig) render(); }, 200); })
     .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id", "data-testid"] });
-  if (target) openItem(target); else render();
+  // open from #dv= only if we're on the item's page: a redirect (e.g. to /login) keeps the hash and would loop
+  if (target && (here(target) || target.tier === "backstage" || (!target.route && !target.selector))) openItem(target);
+  else { if (hash) history.replaceState(history.state, "", location.pathname + location.search); render(); }
   addEventListener("hashchange", () => { const i = byId(decodeURIComponent(/dv=([^&]+)/.exec(location.hash)?.[1] ?? "")); if (i) openItem(i); });
   for (const m of ["pushState", "replaceState"]) { const o = history[m]; history[m] = function (...a) { const x = o.apply(this, a); setTimeout(() => { resolveAll(); render(); }, 0); return x; }; }
   addEventListener("popstate", () => { resolveAll(); render(); });
