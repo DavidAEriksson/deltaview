@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/060c3b51-77d8-4853-8155-95e4d948b350" alt="deltaview — Visual, in-browser review of your branch's changes" width="800">
+</p>
+
 # Deltaview
 
 Visual, in-browser review of a branch's changes, as a Claude Code plugin. Run `/deltaview <branch|commit>` and your app opens in your own Chrome with an overlay on every on-screen element the change affects. Open an overlay to see its diff and a plain-language breakdown, then approve, reject (with a reason) or comment. Changes with no place on screen (CI, migrations, config, unreachable UI) are in the Backstage drawer, tagged "not visually verified". Clicking **Finish review** posts one GitHub review to the open PR and saves a manifest a follow-up agent can act on.
