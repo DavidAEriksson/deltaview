@@ -11,7 +11,7 @@ const TAG = '<script type="module" src="/__deltaview/overlay.mjs"></script>';
 const listen = (s) => new Promise((r) => s.listen(0, "127.0.0.1", () => r(s.address().port)));
 const close = (s) => { s.closeAllConnections?.(); return new Promise((r) => s.close(r)); };
 const req = (port, p, { method = "GET", body, headers = {} } = {}) => new Promise((res, rej) => {
-  const r = http.request({ port, host: "127.0.0.1", path: p, method, headers: { connection: "close", ...headers }, agent: false }, (m) => {
+  const r = http.request({ port, host: "127.0.0.1", path: p, method, headers: { connection: "close", ...(method === "POST" && { "content-type": "application/json" }), ...headers }, agent: false }, (m) => {
     const c = []; m.on("data", (d) => c.push(d)); m.on("end", () => res({ status: m.statusCode, headers: m.headers, buf: Buffer.concat(c), text: Buffer.concat(c).toString() }));
   });
   r.on("error", rej); r.end(body);
@@ -30,6 +30,7 @@ async function setup({ manifest = baseManifest(), postReview = async () => ({ ur
   const seen = {};
   const target = http.createServer(targetHandler ?? ((q, s) => {
     seen.acceptEncoding = q.headers["accept-encoding"];
+    Object.assign(seen, { origin: q.headers.origin, referer: q.headers.referer });
     if (q.url === "/bin") { s.setHeader("content-type", "application/octet-stream"); return s.end(Buffer.from([0, 255, 1, 2])); }
     if (q.url === "/redir") { s.writeHead(302, { location: `http://127.0.0.1:${tport}/next` }); return s.end(); }
     s.writeHead(200, { "content-type": "text/html", "content-security-policy": "default-src 'self'", "content-length": "41" });
@@ -38,6 +39,7 @@ async function setup({ manifest = baseManifest(), postReview = async () => ({ ur
   const sockets = [];
   target.on("upgrade", (q, sock) => {
     sockets.push(sock);
+    seen.wsOrigin = q.headers.origin;
     sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
     sock.on("data", (d) => sock.write(d));
   });
@@ -199,4 +201,46 @@ test("finish after a failure can retry", async () => {
     assert.equal((await req(s.port, "/__deltaview/finish", { method: "POST" })).status, 200);
     assert.equal(calls, 2);
   } finally { await s.cleanup(); }
+});
+
+test("decision during in-flight finish -> 409; failed finish keeps changes saved meanwhile", async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const s = await setup({ manifest: prManifest(), postReview: async () => { await gate; throw new Error("gh boom"); } });
+  try {
+    assert.equal((await decide(s.port, { itemId: "i1", decision: "approved" })).status, 200);
+    const f = req(s.port, "/__deltaview/finish", { method: "POST" });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal((await decide(s.port, { itemId: "i1", decision: "comment", comment: "c" })).status, 409);
+    const m = s.read(); m.items[0].comment = "saved meanwhile"; fs.writeFileSync(s.manifestPath, JSON.stringify(m));
+    release();
+    assert.equal((await f).status, 502);
+    assert.deepEqual([s.read().items[0].decision, s.read().items[0].comment, s.read().error], ["approved", "saved meanwhile", "gh boom"]);
+  } finally { await s.cleanup(); }
+});
+
+test("CSRF: non-JSON POST -> 415, cross-site POST -> 403, same-origin ok", async () => {
+  const s = await setup({ manifest: prManifest() });
+  try {
+    for (const p of ["decision", "finish"]) {
+      assert.equal((await req(s.port, "/__deltaview/" + p, { method: "POST", body: "{}", headers: { "content-type": "text/plain" } })).status, 415);
+      assert.equal((await req(s.port, "/__deltaview/" + p, { method: "POST", body: "{}", headers: { "sec-fetch-site": "cross-site" } })).status, 403);
+    }
+    assert.equal(s.read().status, "in_progress");
+    assert.equal((await decide(s.port, { itemId: "i1", decision: "approved" })).status, 200);
+    assert.equal((await req(s.port, "/__deltaview/decision", { method: "POST", body: JSON.stringify({ itemId: "i1", decision: "approved" }), headers: { "sec-fetch-site": "same-origin" } })).status, 200);
+  } finally { await s.cleanup(); }
+});
+
+test("Origin/Referer mapped from proxy origin to target origin (HTTP and upgrade)", async () => {
+  const s = await setup();
+  const sock = net.connect(s.port, "127.0.0.1");
+  try {
+    const po = `http://127.0.0.1:${s.port}`, to = `http://127.0.0.1:${s.tport}`;
+    await req(s.port, "/", { headers: { origin: po, referer: po + "/a?b" } });
+    assert.deepEqual([s.seen.origin, s.seen.referer], [to, to + "/a?b"]);
+    sock.write(`GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${s.port}\r\nOrigin: ${po}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`);
+    await new Promise((res, rej) => { sock.on("error", rej); sock.on("data", res); });
+    assert.equal(s.seen.wsOrigin, to);
+  } finally { sock.destroy(); await s.cleanup(); }
 });

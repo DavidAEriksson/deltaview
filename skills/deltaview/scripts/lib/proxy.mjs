@@ -36,7 +36,11 @@ export function createServer({ manifestPath, target, postReview }) {
         return res.end(src);
       }
       if (req.method === "GET" && name === "manifest") return json(res, 200, loadManifest(manifestPath));
+      // CSRF: a cross-site form/fetch can't send application/json without a preflight we never answer
+      if (req.method === "POST" && !/^application\/json\b/i.test(req.headers["content-type"] ?? "")) return json(res, 415, { error: "content-type must be application/json" });
+      if (req.method === "POST" && req.headers["sec-fetch-site"] && req.headers["sec-fetch-site"] !== "same-origin") return json(res, 403, { error: "cross-site request" });
       if (req.method === "POST" && name === "decision") {
+        if (finishing) return json(res, 409, { error: "finish in progress" });
         let item;
         try {
           const b = JSON.parse(await readBody(req));
@@ -56,8 +60,9 @@ export function createServer({ manifestPath, target, postReview }) {
         try {
           if (m.pr) {
             try { url = (await postReview(m)).url; } catch (e) {
-              m.error = String(e?.message ?? e); saveManifest(manifestPath, m);
-              return json(res, 502, { error: m.error });
+              const fresh = loadManifest(manifestPath);
+              fresh.error = String(e?.message ?? e); saveManifest(manifestPath, fresh);
+              return json(res, 502, { error: fresh.error });
             }
           }
         } finally { finishing = false; }
@@ -70,10 +75,17 @@ export function createServer({ manifestPath, target, postReview }) {
     } catch (e) { if (!res.headersSent) json(res, 500, { error: e.message }); else res.end(); }
   }
 
+  // Host is rewritten to the target, so Origin/Referer must match it or app CSRF checks reject
+  const upHeaders = (req) => {
+    const h = { ...req.headers, host: t.host };
+    for (const k of ["origin", "referer"]) if (h[k]) h[k] = rewriteLocation(h[k], `http://${req.headers.host}`, t.origin);
+    return h;
+  };
+
   const server = http.createServer((req, res) => {
     const m = /^\/__deltaview\/([^?]*)/.exec(req.url);
     if (m) return api(req, res, m[1]);
-    const headers = { ...req.headers, host: t.host };
+    const headers = upHeaders(req);
     delete headers["accept-encoding"];
     const up = http.request({ hostname: t.hostname, port: t.port || 80, path: req.url, method: req.method, headers, agent: false }, (r) => {
       const h = { ...r.headers };
@@ -96,7 +108,7 @@ export function createServer({ manifestPath, target, postReview }) {
 
   server.on("upgrade", (req, sock, head) => {
     const up = net.connect(Number(t.port || 80), t.hostname, () => {
-      const lines = Object.entries({ ...req.headers, host: t.host }).map(([k, v]) => `${k}: ${v}`);
+      const lines = Object.entries(upHeaders(req)).map(([k, v]) => `${k}: ${v}`);
       up.write(`${req.method} ${req.url} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
       if (head.length) up.write(head);
       up.pipe(sock); sock.pipe(up);
