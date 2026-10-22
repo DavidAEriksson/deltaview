@@ -17,6 +17,7 @@ export function parseDiff(text) {
     }
     if (status === "deleted") file = oldFile;
     if (binary) { push({ file, oldFile, status: "binary", oldStart: 0, newStart: 0, lines: [] }); continue; }
+    const before = hunks.length;
     let cur = null, o = 0, n = 0;
     for (; i < lines.length; i++) {
       const l = lines[i];
@@ -30,6 +31,8 @@ export function parseDiff(text) {
       else if (l[0] === "-") cur.lines.push({ type: "del", text: l.slice(1), oldLine: o++, newLine: null });
       else if (l[0] === " ") cur.lines.push({ type: "ctx", text: l.slice(1), oldLine: o++, newLine: n++ });
     }
+    // pure rename / mode-only / empty file: no @@ hunk, but the file must still be covered by an item
+    if (hunks.length === before) push({ file, oldFile, status, oldStart: 0, newStart: 0, lines: [] });
   }
   return hunks;
 }

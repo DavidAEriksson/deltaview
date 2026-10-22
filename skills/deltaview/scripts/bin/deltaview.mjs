@@ -12,7 +12,7 @@ function init(argv) {
     base: { type: "string" }, head: { type: "string" }, out: { type: "string" }, pr: { type: "string" },
   } });
   for (const k of ["repo", "ref", "target", "base", "head", "out"]) if (!v[k]) fail(`init: missing --${k}`);
-  const diff = execFileSync("git", ["-C", v.repo, "diff", "--no-color", "--find-renames", `${v.base}...${v.head}`],
+  const diff = execFileSync("git", ["-C", v.repo, "-c", "core.quotepath=false", "diff", "--no-color", "--find-renames", `${v.base}...${v.head}`],
     { encoding: "utf8", maxBuffer: 1 << 30 });
   let repo = null;
   try {

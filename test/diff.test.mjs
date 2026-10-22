@@ -49,3 +49,12 @@ test('ignores "\\ No newline at end of file"', () => {
   assert.equal(h.lines.length, 2);
   assert.ok(h.lines.every((l) => !l.text.startsWith("\\")));
 });
+
+test("pure rename and empty new file emit a hunk with no lines", () => {
+  const hs = parseDiff(
+    "diff --git a/old.js b/new.js\nsimilarity index 100%\nrename from old.js\nrename to new.js\n" +
+    "diff --git a/empty.txt b/empty.txt\nnew file mode 100644\nindex 0000000..e69de29\n");
+  assert.equal(hs.length, 2);
+  assert.deepEqual(hs.map((h) => [h.id, h.file, h.oldFile, h.status, h.oldStart, h.newStart, h.lines.length]),
+    [["h1", "new.js", "old.js", "renamed", 0, 0, 0], ["h2", "empty.txt", "empty.txt", "added", 0, 0, 0]]);
+});
