@@ -26,14 +26,14 @@ Ground rules (never break them):
 ## 2. Resolve
 
 1. If `<ref>` is empty, ask the user for a branch name or commit hash.
-2. If `git rev-parse --verify --quiet '<ref>^{commit}'` fails, run `git fetch origin <ref>`; the head is then `FETCH_HEAD`.
+2. If `git rev-parse --verify --quiet '<ref>^{commit}'` fails, run `git fetch origin <ref>`; the head is then `FETCH_HEAD`. If the fetch also fails, stop: "ref not found: `<ref>`".
 3. If `<ref>` is a branch name (not a hash), run `gh pr list --head <ref> --state open --json number,url,baseRefName,author,headRepositoryOwner`. If it fails (e.g. no GitHub remote) or returns `[]`, pr = null. If it returns a PR:
-   - If `headRepositoryOwner.login` differs from the owner in `gh repo view --json owner -q .owner.login`, it's a fork PR: `git fetch origin pull/<number>/head` and use `FETCH_HEAD` as the head.
+   - Always review the PR's current tip, not a possibly stale local branch: if `headRepositoryOwner.login` differs from the owner in `gh repo view --json owner -q .owner.login` (a fork PR) run `git fetch origin pull/<number>/head`, else `git fetch origin <ref>`. Use `FETCH_HEAD` as the head. If the fetch fails, stop: "ref not found: `<ref>`".
    - `isAuthor` = `author.login` equals `gh api user -q .login`.
    - pr = `{"number":<number>,"url":"<url>","isAuthor":<true|false>}`.
 4. target = the PR's `baseRefName`, else `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`, else `git symbolic-ref --short refs/remotes/origin/HEAD` without `origin/`, else `main` or `master` (whichever exists locally), else ask the user.
 5. Run `git fetch origin <target>` (ignore failure if there is no remote). `<targetRef>` = `origin/<target>` if `git rev-parse --verify --quiet origin/<target>` succeeds, else `<target>`.
-6. headSha = `git rev-parse <head>^{commit}` (head = `<ref>`, `FETCH_HEAD` or the fork head). baseSha = `git merge-base <targetRef> <headSha>`.
+6. headSha = `git rev-parse <head>^{commit}` (head = `<ref>` or `FETCH_HEAD`); if it fails, stop: "ref not found: `<ref>`". baseSha = `git merge-base <targetRef> <headSha>`.
 7. If `git diff --quiet <baseSha> <headSha>` exits 0, say "`<ref>` has no changes against `<target>`" and stop.
 
 ## 3. Resume check
@@ -111,7 +111,7 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
 1. If the dev server isn't running (e.g. when resuming), start it as in step 7 "Start the app".
 2. Pick a free port: `node -e 's=require("net").createServer().listen(0,()=>{console.log(s.address().port);s.close()})'`.
 3. Start `DV serve --manifest <manifest> --target <devUrl> --port <port>` with Bash `run_in_background`. Its first output line is `{"proxyUrl":"…","port":…}`. If it exits with `deltaview: …` instead, show the error and pick another port once.
-4. `tabs_create_mcp` and `navigate` to `proxyUrl` (keep `#` fragments off). Tell the user:
+4. `tabs_context_mcp` (needed when resuming, which skips step 7), then `tabs_create_mcp` and `navigate` to `proxyUrl` (keep `#` fragments off). Tell the user:
    "Review is open in Chrome at <proxyUrl>. The Deltaview bar is bottom-left: click an item to see its diff and summary, then approve / reject (reason required) / comment. Backstage items are in the drawer. Click **Finish review** when done. If the app needs a login, log in yourself in that tab."
 5. Don't poll. The serve process exits when the reviewer clicks Finish, and you're re-invoked then. Decisions are saved to `<manifest>` immediately; if the session is interrupted, running `/deltaview <ref>` again resumes.
 
