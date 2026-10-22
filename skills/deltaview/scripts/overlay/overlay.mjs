@@ -5,14 +5,14 @@ const CSS = `
 *{box-sizing:border-box;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace}
 .layer{position:fixed;inset:0;pointer-events:none;color:#cfd8e3}
 .auto{pointer-events:auto}
-.bar{position:fixed;top:0;left:0;right:0;display:flex;gap:14px;align-items:center;padding:6px 12px;background:#111;border-bottom:1px solid #2c4155;pointer-events:auto}
+.bar{z-index:2;position:fixed;bottom:12px;left:12px;max-width:min(440px,calc(100vw - 24px));display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:6px 10px;background:#111;border:1px solid #2c4155;border-radius:6px;pointer-events:auto}
 .brand{color:#5ea1f0;font-weight:700;font-size:14px}
 .muted{color:#8a96a3}.ok{color:#5fb584}.bad{color:#f08080}.warn{color:#d9822b}
 .spacer{flex:1}
 button{cursor:pointer;background:#162430;color:#5ea1f0;border:1px solid #2c4155;border-radius:4px;padding:4px 10px}
 button:hover:not(:disabled){background:#1d3144}button:disabled{opacity:.4;cursor:not-allowed}
 button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1520;font-weight:700}
-.menu{position:fixed;top:36px;right:12px;width:380px;max-height:70vh;overflow:auto;background:#111;border:1px solid #2c4155;padding:6px;pointer-events:auto}
+.menu{position:absolute;bottom:100%;left:0;margin-bottom:6px;width:380px;max-width:calc(100vw - 24px);max-height:60vh;overflow:auto;background:#111;border:1px solid #2c4155;padding:6px;pointer-events:auto}
 .menu h4{margin:8px 0 2px;color:#8a96a3;font-weight:400}
 .row{display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0;background:none;color:#cfd8e3;padding:4px}
 .row:hover{background:#162430}
@@ -21,8 +21,8 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .outline.open{border-color:#fff;background:rgba(94,161,240,.18)}
 .outline.done{border-color:#5fb584}.outline.rej{border-color:#f08080}
 .chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 6px;pointer-events:auto;cursor:pointer;white-space:nowrap}
-.panel{position:fixed;width:440px;max-height:calc(100vh - 56px);overflow:auto;background:#111;border:1px solid #2c4155;pointer-events:auto}
-.drawer{position:fixed;top:36px;right:0;bottom:0;width:480px;overflow:auto;background:#111;border-left:1px solid #2c4155;pointer-events:auto}
+.panel{position:fixed;width:440px;max-height:calc(100vh - 16px);overflow:auto;background:#111;border:1px solid #2c4155;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:480px;overflow:auto;background:#111;border-left:1px solid #2c4155;pointer-events:auto}
 .card{padding:10px;border-bottom:1px solid #2c4155}
 .card h3{margin:0 0 4px;color:#5ea1f0;font-size:13px}
 .crumbs{color:#8a96a3;margin-bottom:6px}.crumbs b{color:#5ea1f0;font-weight:400}
@@ -51,7 +51,7 @@ const api = async (path, body) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 
-let M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null;
+let barOpen = false, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null;
 const drafts = {}; // itemId -> { choice, comment, msg }
 const els = new Map(); // itemId -> resolved element
 const outlines = new Map(); // itemId -> outline div
@@ -70,6 +70,8 @@ const here = (i) => itemsForPath([i], location.pathname).length > 0;
 const resolve = (i) => { try { return i.selector ? document.querySelector(i.selector) : null; } catch { return null; } };
 
 function resolveAll() {
+  const cur = new Set(onRoute().map((i) => i.id));
+  for (const id of [...els.keys()]) if (!cur.has(id)) els.delete(id);
   for (const i of onRoute()) {
     const el = resolve(i);
     el ? els.set(i.id, el) : els.delete(i.id);
@@ -139,17 +141,19 @@ function topbar() {
       : r.status === 409 ? { text: "Finish already in progress.", warn: true } : { text: r.body.error ?? "Finish failed", bad: true };
     render();
   } });
+  const full = barOpen;
   return h("div", { class: "bar" },
+    menu && menuView(),
     h("span", { class: "brand", textContent: "DELTAVIEW/" + M.ref }),
     h("span", { textContent: `${done}/${total} reviewed` }),
-    t && h("span", { class: t.passed ? "ok" : "bad", textContent: `tests: ${t.passed ? "passed" : "failed"} (${t.summary})` }),
-    M.newEnvVars.length > 0 && h("span", { class: "warn", textContent: "New env vars: " + M.newEnvVars.join(", ") }),
-    h("span", { class: "spacer" }),
+    h("button", { textContent: full ? "▾" : "▴", title: full ? "Collapse" : "Expand", onclick: () => { barOpen = !barOpen; menu = false; render(); } }),
+    full && t && h("span", { class: t.passed ? "ok" : "bad", textContent: `tests: ${t.passed ? "passed" : "failed"} (${t.summary})` }),
+    full && M.newEnvVars.length > 0 && h("span", { class: "warn", textContent: "New env vars: " + M.newEnvVars.join(", ") }),
     finishMsg && (finishMsg.url ? h("a", { href: finishMsg.url, target: "_blank", style: "color:#5fb584", textContent: "Review posted: " + finishMsg.url })
       : h("span", { class: finishMsg.bad ? "bad" : finishMsg.warn ? "warn" : "ok", textContent: finishMsg.text })),
-    h("button", { textContent: "Items ▾", onclick: () => { menu = !menu; render(); } }),
-    h("button", { class: drawer ? "sel" : "", textContent: "Backstage", onclick: () => { drawer = !drawer; menu = false; render(); } }),
-    finish);
+    full && h("button", { textContent: "Items ▾", onclick: () => { menu = !menu; render(); } }),
+    full && h("button", { class: drawer ? "sel" : "", textContent: "Backstage", onclick: () => { drawer = !drawer; menu = false; render(); } }),
+    full && finish);
 }
 
 function menuView() {
@@ -174,7 +178,8 @@ function panelView() {
 }
 
 function render() {
-  uiLayer.replaceChildren(topbar(), menu && menuView(), drawer && h("div", { class: "drawer" }, M.items.filter((i) => i.tier === "backstage").map(card)), panelView());
+  if (openId && !here(byId(openId))) openId = null;
+  uiLayer.replaceChildren(...[topbar(), drawer && h("div", { class: "drawer" }, M.items.filter((i) => i.tier === "backstage").map(card)), panelView()].filter(Boolean));
   for (const i of onRoute()) {
     if (outlines.has(i.id)) continue;
     const chip = h("div", { class: "chip", onclick: () => openItem(i) });
@@ -182,7 +187,9 @@ function render() {
     outlines.set(i.id, o);
     outlineLayer.append(o);
   }
+  const cur = new Set(onRoute().map((i) => i.id));
   for (const [id, o] of outlines) {
+    if (!cur.has(id)) { o.remove(); outlines.delete(id); continue; }
     const i = byId(id);
     o.className = "outline" + (id === openId ? " open" : "") + (i.decision === "rejected" ? " rej" : i.decision ? " done" : "");
     o.firstChild.textContent = i.title + (i.decision ? " ✓" : "");
@@ -201,7 +208,7 @@ function place() {
     const right = r ? r.right + 12 : innerWidth - w - 12;
     const left = r ? (right + w <= innerWidth - 8 ? right : Math.max(8, r.left - w - 12)) : right;
     p.style.left = left + "px";
-    p.style.top = Math.max(44, Math.min(r ? r.top : 44, innerHeight - p.offsetHeight - 8)) + "px";
+    p.style.top = Math.max(8, Math.min(r ? r.top : 44, innerHeight - p.offsetHeight - 8)) + "px";
   }
   requestAnimationFrame(place);
 }
@@ -213,10 +220,12 @@ async function start() {
   document.documentElement.append(host);
   resolveAll();
   let t;
-  new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { const sig = [...els.keys()].join(); resolveAll(); if ([...els.keys()].join() !== sig) render(); }, 200); })
+  new MutationObserver(() => { if (!t) t = setTimeout(() => { t = null; const sig = location.pathname + [...els.keys()].join(); resolveAll(); if (location.pathname + [...els.keys()].join() !== sig) render(); }, 200); })
     .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id", "data-testid"] });
   if (target) openItem(target); else render();
   addEventListener("hashchange", () => { const i = byId(decodeURIComponent(/dv=([^&]+)/.exec(location.hash)?.[1] ?? "")); if (i) openItem(i); });
+  for (const m of ["pushState", "replaceState"]) { const o = history[m]; history[m] = function (...a) { const x = o.apply(this, a); setTimeout(() => { resolveAll(); render(); }, 0); return x; }; }
+  addEventListener("popstate", () => { resolveAll(); render(); });
   place();
 }
 start();
