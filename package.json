@@ -1,1 +1,1 @@
-{"name":"deltaview","type":"module","private":true,"engines":{"node":">=20"},"scripts":{"test":"node --test test/"}}
+{"name":"deltaview","type":"module","private":true,"engines":{"node":">=20"},"scripts":{"test":"node --test"}}
