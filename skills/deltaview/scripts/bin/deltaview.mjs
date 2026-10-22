@@ -6,6 +6,8 @@ import fs from "node:fs";
 import { createManifest, loadManifest, saveManifest, setItems } from "../lib/manifest.mjs";
 import { newEnvVars } from "../lib/envcheck.mjs";
 import { findResumable } from "../lib/resume.mjs";
+import { createServer } from "../lib/proxy.mjs";
+import { postReview } from "../lib/github.mjs";
 
 const fail = (msg) => { console.error(`deltaview: ${msg}`); process.exit(1); };
 
@@ -65,8 +67,20 @@ function addItems(argv) {
   saveManifest(v.manifest, setItems(loadManifest(v.manifest), JSON.parse(fs.readFileSync(v.items, "utf8"))));
 }
 
+function serve(argv) {
+  const { values: v } = parseArgs({ args: argv, options: { manifest: { type: "string" }, target: { type: "string" }, port: { type: "string" } } });
+  for (const k of ["manifest", "target", "port"]) if (!v[k]) fail(`serve: missing --${k}`);
+  const { server, finished } = createServer({ manifestPath: v.manifest, target: v.target, postReview });
+  server.on("error", (e) => fail(e.code === "EADDRINUSE" ? `port ${v.port} is already in use` : e.message));
+  server.listen(Number(v.port), "127.0.0.1", () => {
+    const port = server.address().port;
+    console.log(JSON.stringify({ proxyUrl: `http://127.0.0.1:${port}`, port }));
+  });
+  finished.then((r) => { console.log(JSON.stringify({ done: true, ...r })); process.exit(0); });
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
-const commands = { init, env, resume, patch, "add-items": addItems };
+const commands = { init, env, resume, patch, "add-items": addItems, serve };
 try {
   (commands[cmd] ?? (() => fail(`unknown subcommand ${cmd ?? ""}`)))(rest);
 } catch (e) { fail(e.message); }
