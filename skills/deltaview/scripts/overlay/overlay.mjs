@@ -22,6 +22,7 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .outline.done{border-color:#5fb584}.outline.rej{border-color:#f08080}
 .chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 0 0 6px;white-space:nowrap;line-height:16px;font-size:11px}
 .chip button{pointer-events:auto;margin-left:4px;padding:0 4px;border:0;border-left:1px solid #2c4155;border-radius:0;line-height:16px;font-size:11px}
+.x{position:sticky;top:0;float:right;margin:6px;z-index:1}
 .panel{position:fixed;width:440px;max-height:calc(100vh - 16px);overflow:auto;background:#111;border:1px solid #2c4155;pointer-events:auto}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:480px;overflow:auto;background:#111;border-left:1px solid #2c4155;pointer-events:auto}
 .card{padding:10px;border-bottom:1px solid #2c4155}
@@ -92,6 +93,8 @@ function openItem(i) {
   menu = false;
   render();
 }
+
+function closeAll() { openId = null; drawer = false; menu = false; render(); }
 
 function draft(i) { return (drafts[i.id] ??= { choice: i.decision, comment: i.comment ?? "", msg: "" }); }
 
@@ -172,17 +175,19 @@ function menuView() {
       here(i) && i.selector && !els.has(i.id) && h("span", { class: "badge", textContent: "not found on this page" }))))));
 }
 
+const closeBtn = () => h("button", { class: "x", textContent: "✕", title: "Close (Esc)", ariaLabel: "Close", onclick: closeAll });
+
 function panelView() {
   const i = openId && byId(openId);
   if (!i) return null;
-  const p = h("div", { class: "panel" }, card(i));
+  const p = h("div", { class: "panel" }, closeBtn(), card(i));
   p.dataset.item = i.id;
   return p;
 }
 
 function render() {
   if (openId && !here(byId(openId))) openId = null;
-  uiLayer.replaceChildren(...[topbar(), drawer && h("div", { class: "drawer" }, M.items.filter((i) => i.tier === "backstage").map(card)), panelView()].filter(Boolean));
+  uiLayer.replaceChildren(...[topbar(), drawer && h("div", { class: "drawer" }, closeBtn(), M.items.filter((i) => i.tier === "backstage").map(card)), panelView()].filter(Boolean));
   for (const i of onRoute()) {
     if (outlines.has(i.id)) continue;
     // only the small button takes clicks, so a closed overlay doesn't cover the app's controls
@@ -208,6 +213,12 @@ function place() {
     const el = els.get(id), r = el?.isConnected && el.getBoundingClientRect();
     if (!r || (!r.width && !r.height)) { o.style.display = "none"; continue; }
     Object.assign(o.style, { display: "block", left: r.left - 3 + "px", top: r.top - 3 + "px", width: r.width + 6 + "px", height: r.height + 6 + "px" });
+    // keep the chip on screen: below the element when there's no room above, shifted left at the right edge
+    const c = o.firstChild;
+    c.style.cssText = "";
+    const b = c.getBoundingClientRect();
+    if (b.top < 0) Object.assign(c.style, { bottom: "auto", top: "100%", marginTop: "2px" });
+    if (b.right > innerWidth) c.style.left = Math.max(3 - r.left, innerWidth - 4 - b.right - 2) + "px";
   }
   // hide a chip that collides with an earlier one; its item stays reachable from the Items menu
   const shown = [];
@@ -243,6 +254,7 @@ async function start() {
   else { if (hash) history.replaceState(history.state, "", location.pathname + location.search); render(); }
   addEventListener("hashchange", () => { const i = byId(decodeURIComponent(/dv=([^&]+)/.exec(location.hash)?.[1] ?? "")); if (i) openItem(i); });
   for (const m of ["pushState", "replaceState"]) { const o = history[m]; history[m] = function (...a) { const x = o.apply(this, a); setTimeout(() => { resolveAll(); render(); }, 0); return x; }; }
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && (openId || drawer || menu)) closeAll(); }, true);
   addEventListener("popstate", () => { resolveAll(); render(); });
   place();
 }
