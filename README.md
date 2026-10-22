@@ -11,6 +11,16 @@ Visual, in-browser review of a branch's changes, as a Claude Code plugin. Run `/
 
 For local development: `claude --plugin-dir /path/to/deltaview`.
 
+## Update
+
+Refresh the marketplace to fetch the latest release, then restart Claude Code so the new version loads:
+
+```
+/plugin marketplace update deltaview
+```
+
+If the old version still loads after the restart, open `/plugin`, go to the installed plugins, and update deltaview from there. To update automatically, turn on auto-update for the deltaview marketplace under `/plugin` → Marketplaces. Each release's changes are in [CHANGELOG.md](CHANGELOG.md) and on the [releases page](https://github.com/DavidAEriksson/deltaview/releases). `/plugin` shows which version is installed.
+
 ## Usage
 
 ```
