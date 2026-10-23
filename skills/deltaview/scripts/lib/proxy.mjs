@@ -27,6 +27,8 @@ const readBody = (req) => new Promise((ok, no) => { const c = []; req.on("data",
 export function createServer({ manifestPath, target, postReview }) {
   const t = new URL(target);
   const secure = t.protocol === "https:", port = Number(t.port || (secure ? 443 : 80));
+  // local dev servers use self-signed certs (mkcert, vite basicSsl); traffic to loopback never leaves the machine
+  const tlsOpts = secure && /^(localhost|127(\.\d+){3}|\[::1\])$/.test(t.hostname) ? { rejectUnauthorized: false } : {};
   let resolveFinished, finishing = false;
   const finished = new Promise((r) => { resolveFinished = r; });
 
@@ -90,7 +92,7 @@ export function createServer({ manifestPath, target, postReview }) {
     if (m) return api(req, res, m[1]);
     const headers = upHeaders(req);
     delete headers["accept-encoding"];
-    const up = (secure ? https : http).request({ hostname: t.hostname, port, path: req.url, method: req.method, headers, agent: false }, (r) => {
+    const up = (secure ? https : http).request({ hostname: t.hostname, port, path: req.url, method: req.method, headers, agent: false, ...tlsOpts }, (r) => {
       const h = { ...r.headers };
       if (h.location) h.location = rewriteLocation(h.location, t.origin, `http://${req.headers.host}`);
       if (!/^text\/html/i.test(h["content-type"] ?? "")) { res.writeHead(r.statusCode, h); return r.pipe(res); }
@@ -110,7 +112,7 @@ export function createServer({ manifestPath, target, postReview }) {
   });
 
   server.on("upgrade", (req, sock, head) => {
-    const up = (secure ? tls : net).connect({ port, host: t.hostname }, () => {
+    const up = (secure ? tls : net).connect({ port, host: t.hostname, ...tlsOpts }, () => {
       const lines = Object.entries(upHeaders(req)).map(([k, v]) => `${k}: ${v}`);
       up.write(`${req.method} ${req.url} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
       if (head.length) up.write(head);
