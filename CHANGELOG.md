@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0](https://github.com/DavidAEriksson/deltaview/compare/v1.2.0...v1.3.0) (2026-10-23)
+
+
+### Features
+
+* **overlay:** keyboard shortcuts and a Next undecided button ([8e666aa](https://github.com/DavidAEriksson/deltaview/commit/8e666aa5f6f6fd13bfa546b94dd64d1fcc937691))
+* **overlay:** line numbers and word-level highlights in the diff view ([9bf4034](https://github.com/DavidAEriksson/deltaview/commit/9bf40341722159fc060202ee4c41dd2b68aa0084))
+* **overlay:** outline every selector match, dim outlines for extra instances ([0b434e5](https://github.com/DavidAEriksson/deltaview/commit/0b434e524f97a6d27cebb6a67ff1b97b38632b3a))
+
 ## [1.2.0](https://github.com/DavidAEriksson/deltaview/compare/v1.1.0...v1.2.0) (2026-10-23)
 
 
