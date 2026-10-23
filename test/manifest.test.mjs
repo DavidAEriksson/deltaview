@@ -94,3 +94,59 @@ test("saveManifest then loadManifest round-trips and writes .md sibling", async 
   assert.match(await fs.readFile(path.join(dir, "sub", "r.md"), "utf8"), /Deltaview review/);
   assert.deepEqual((await fs.readdir(path.join(dir, "sub"))).sort(), ["r.json", "r.md"]);
 });
+
+test("carryDecisions copies decisions for identical edits, flags changed items, never carries binary", async () => {
+  const { carryDecisions } = await import("../skills/deltaview/scripts/lib/manifest.mjs");
+  const L = (type, text, n) => ({ type, text, oldLine: type === "add" ? null : n, newLine: type === "del" ? null : n });
+  const h = (id, file, lines, status = "modified") => ({ id, file, oldFile: file, status, oldStart: 1, newStart: 1, lines });
+  const prev = createManifest({ ref: "r", target: "main", baseSha: "b", headSha: "h1", repo: null, hunks: [
+    h("h1", "a.js", [L("ctx", "x", 1), L("add", "same", 2)]), h("h2", "b.js", [L("add", "old", 1)]), h("h3", "logo.png", [], "binary"), h("h4", "c.js", [L("add", "c", 1)]),
+  ] });
+  setItems(prev, [item("i1", ["h1"]), item("i2", ["h2"]), item("i3", ["h3"]), item("i4", ["h4"])]);
+  applyDecision(prev, { itemId: "i1", decision: "rejected", comment: "no" });
+  applyDecision(prev, { itemId: "i2", decision: "approved" });
+  applyDecision(prev, { itemId: "i3", decision: "approved" });
+  // same edit in a.js at a new line with new context; b.js edit changed; c.js unchanged but undecided
+  const next = createManifest({ ref: "r", target: "main", baseSha: "b", headSha: "h2", repo: null, hunks: [
+    h("h1", "a.js", [L("ctx", "y", 7), L("add", "same", 8)]), h("h2", "b.js", [L("add", "new", 1)]), h("h3", "logo.png", [], "binary"), h("h4", "c.js", [L("add", "c", 1)]),
+  ] });
+  setItems(next, [item("n1", ["h1"]), item("n2", ["h2"]), item("n3", ["h3"]), item("n4", ["h4"])]);
+  assert.equal(carryDecisions(next, prev), 1);
+  const [n1, n2, n3, n4] = next.items;
+  assert.deepEqual([n1.decision, n1.comment, n1.carriedOver, n1.changedSinceReview], ["rejected", "no", true, undefined]);
+  assert.deepEqual([n2.decision, n2.changedSinceReview], [null, true]);
+  assert.deepEqual([n3.decision, n3.changedSinceReview], [null, true]);
+  assert.deepEqual([n4.decision, n4.changedSinceReview, n4.carriedOver], [null, undefined, undefined]);
+});
+
+test("applyDecision stores a valid line, rejects a bad one, drops it for approvals and resets", () => {
+  const m = mk();
+  m.hunks.h1.lines = [{ type: "add", text: "x", oldLine: null, newLine: 1 }];
+  setItems(m, [item("i1", ["h1"]), item("i2", ["h2"])]);
+  assert.match(err(() => applyDecision(m, { itemId: "i1", decision: "comment", comment: "c", line: { hunkId: "h1", index: 5 } })), /invalid line/);
+  assert.match(err(() => applyDecision(m, { itemId: "i1", decision: "comment", comment: "c", line: { hunkId: "h2", index: 0 } })), /invalid line/);
+  applyDecision(m, { itemId: "i1", decision: "comment", comment: "c", line: { hunkId: "h1", index: 0 } });
+  assert.deepEqual(m.items[0].line, { hunkId: "h1", index: 0 });
+  applyDecision(m, { itemId: "i1", decision: "approved", line: { hunkId: "h1", index: 0 } });
+  assert.equal(m.items[0].line, null);
+  applyDecision(m, { itemId: "i1", decision: "rejected", comment: "r", line: { hunkId: "h1", index: 0 } });
+  applyDecision(m, { itemId: "i1", decision: null });
+  assert.equal(m.items[0].line, null);
+});
+
+test("carryDecisions remaps a line to the new hunk id only when the hunk text is identical", async () => {
+  const { carryDecisions } = await import("../skills/deltaview/scripts/lib/manifest.mjs");
+  const h = (id, file, ctx, n) => ({ id, file, oldFile: file, status: "modified", oldStart: n, newStart: n, lines: [{ type: "ctx", text: ctx, oldLine: n, newLine: n }, { type: "add", text: "e", oldLine: null, newLine: n + 1 }] });
+  const mkm = (hunks) => createManifest({ ref: "r", target: "main", baseSha: "b", headSha: "x", repo: null, hunks });
+  const prev = mkm([h("h1", "a.js", "ctx", 1), h("h2", "b.js", "ctx", 1)]);
+  setItems(prev, [item("i1", ["h1"]), item("i2", ["h2"])]);
+  applyDecision(prev, { itemId: "i1", decision: "rejected", comment: "r", line: { hunkId: "h1", index: 1 } });
+  applyDecision(prev, { itemId: "i2", decision: "rejected", comment: "r", line: { hunkId: "h2", index: 1 } });
+  // a.js moved down but is otherwise identical; b.js has new context around the same edit
+  const next = mkm([h("h1", "z.js", "z", 1), h("h2", "a.js", "ctx", 9), h("h3", "b.js", "other", 1)]);
+  setItems(next, [item("n0", ["h1"]), item("n1", ["h2"]), item("n2", ["h3"])]);
+  carryDecisions(next, prev);
+  assert.deepEqual(next.items[1].line, { hunkId: "h2", index: 1 });
+  assert.equal(next.items[2].decision, "rejected");
+  assert.equal(next.items[2].line, null);
+});

@@ -41,3 +41,13 @@ test("findResumable ignores manifests of another ref sharing the slug prefix", (
   mk(d, "feat-demo-2026-01-03T00.json", { ref: "feat-demo", status: "in_progress", headSha: "abc", items: [{ id: "i1" }] });
   assert.equal(findResumable(d, "feat/demo", "abc"), null);
 });
+test("findPrevious returns the newest review of the ref at another commit, any status", async () => {
+  const { findPrevious } = await import("../skills/deltaview/scripts/lib/resume.mjs");
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "dv-"));
+  mk(d, "feat-x-2026-01-01T00.json", { ref: "feat/x", status: "finished", headSha: "old", items: [{ id: "i1" }] });
+  mk(d, "feat-x-2026-01-02T00.json", { ref: "feat/x", status: "finished", headSha: "old2", items: [{ id: "i1" }] });
+  mk(d, "feat-x-2026-01-03T00.json", { ref: "feat/x", status: "in_progress", headSha: "new", items: [{ id: "i1" }] });
+  mk(d, "feat-x-2026-01-04T00.json", { ref: "feat/x", status: "in_progress", headSha: "old3", items: [] });
+  assert.equal(findPrevious(d, "feat/x", "new"), path.join(d, "feat-x-2026-01-02T00.json"));
+  assert.equal(findPrevious(d, "feat/y", "new"), null);
+});

@@ -7,7 +7,7 @@ import { loadManifest, saveManifest, applyDecision } from "./manifest.mjs";
 
 const TAG = '<script type="module" src="/__deltaview/overlay.mjs"></script>';
 const OVERLAY_DIR = new URL("../overlay/", import.meta.url);
-const STRIP_HTML = ["content-length", "content-encoding", "content-security-policy", "content-security-policy-report-only"];
+const STRIP_HTML = ["content-length", "content-encoding", "content-security-policy", "content-security-policy-report-only", "x-frame-options"]; // framing: before/after view
 
 export function injectScript(html) {
   if (html.includes(TAG)) return html;
@@ -24,7 +24,8 @@ export const rewriteLocation = (loc, targetOrigin, proxyOrigin) =>
 const json = (res, status, obj) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
 const readBody = (req) => new Promise((ok, no) => { const c = []; req.on("data", (d) => c.push(d)); req.on("end", () => ok(Buffer.concat(c).toString())); req.on("error", no); });
 
-export function createServer({ manifestPath, target, postReview }) {
+// mode "base": read-only view of the base version for before/after; baseUrl: that view's origin, passed to the overlay
+export function createServer({ manifestPath, target, postReview, mode = null, baseUrl = null }) {
   const t = new URL(target);
   const secure = t.protocol === "https:", port = Number(t.port || (secure ? 443 : 80));
   // local dev servers use self-signed certs (mkcert, vite basicSsl); traffic to loopback never leaves the machine
@@ -40,7 +41,8 @@ export function createServer({ manifestPath, target, postReview }) {
         res.writeHead(200, { "content-type": "text/javascript" });
         return res.end(src);
       }
-      if (req.method === "GET" && name === "manifest") return json(res, 200, loadManifest(manifestPath));
+      if (req.method === "GET" && name === "manifest") return json(res, 200, { ...loadManifest(manifestPath), mode, baseUrl });
+      if (req.method === "POST" && mode === "base") return json(res, 403, { error: "the before view is read-only" });
       // CSRF: a cross-site form/fetch can't send application/json without a preflight we never answer
       if (req.method === "POST" && !/^application\/json\b/i.test(req.headers["content-type"] ?? "")) return json(res, 415, { error: "content-type must be application/json" });
       if (req.method === "POST" && req.headers["sec-fetch-site"] && req.headers["sec-fetch-site"] !== "same-origin") return json(res, 403, { error: "cross-site request" });
@@ -50,7 +52,7 @@ export function createServer({ manifestPath, target, postReview }) {
         try {
           const b = JSON.parse(await readBody(req));
           const m = loadManifest(manifestPath);
-          applyDecision(m, { itemId: b.itemId, decision: b.decision, comment: b.comment ?? "" });
+          applyDecision(m, { itemId: b.itemId, decision: b.decision, comment: b.comment ?? "", line: b.line ?? null });
           saveManifest(manifestPath, m);
           item = m.items.find((i) => i.id === b.itemId);
         } catch (e) { return json(res, 400, { error: e.message }); }
