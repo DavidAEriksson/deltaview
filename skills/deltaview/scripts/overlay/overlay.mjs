@@ -44,6 +44,8 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .msg{margin-top:4px}
 .before{position:fixed;top:0;right:0;bottom:0;width:50vw;display:flex;flex-direction:column;background:#111;border-left:1px solid #2c4155;pointer-events:auto}
 .before iframe{flex:1;border:0;background:#fff}
+.mobile{position:fixed;top:8px;right:8px;display:flex;flex-direction:column;background:#111;border:1px solid #2c4155;pointer-events:auto}
+.mobile iframe{width:390px;height:min(844px,calc(100vh - 60px));border:0;background:#fff}
 .bhead{display:flex;align-items:center;gap:8px;padding:4px 8px;color:#8a96a3}
 `;
 
@@ -62,7 +64,7 @@ const api = async (path, body) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 
-let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null, view = false; // cursor: last opened item, for j/k/n; view: outlines only (the before page)
+let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null, view = false; // cursor: last opened item, for j/k/n; view: outlines only (the before page, the mobile frame)
 try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
 const drafts = {}; // itemId -> { choice, comment, line, msg }
 const els = new Map(); // itemId -> matched elements; the first is the anchor, the rest other instances
@@ -107,7 +109,7 @@ function openItem(i) {
   else { openId = i.id; drawer = false; pendingScroll = i.id; resolveAll(); }
   cursor = i.id;
   menu = false;
-  if (beforeLayer.firstChild) openId ? showBefore(i) : beforeLayer.replaceChildren();
+  if (beforeLayer.querySelector(".before")) openId ? showBefore(i) : beforeLayer.replaceChildren();
   render();
   if (drawer) cardEl(i.id)?.scrollIntoView({ block: "start" });
 }
@@ -152,6 +154,16 @@ function onKey(e) {
 }
 
 function closeAll() { openId = null; drawer = false; menu = false; beforeLayer.replaceChildren(); render(); }
+
+// the same page at phone width; it loads through the proxy, so the framed overlay outlines the items too
+function toggleMobile() {
+  if (beforeLayer.querySelector(".mobile")) beforeLayer.replaceChildren();
+  else beforeLayer.replaceChildren(h("div", { class: "mobile" },
+    h("div", { class: "bhead" }, h("span", { class: "spacer", textContent: "390px wide: " + location.pathname }),
+      h("button", { textContent: "✕", title: "Close the mobile view", ariaLabel: "Close the mobile view", onclick: toggleMobile })),
+    h("iframe", { src: location.pathname + location.search, title: "Mobile width view" })));
+  render();
+}
 
 function showBefore(i) {
   beforeLayer.replaceChildren(h("div", { class: "before" },
@@ -238,6 +250,7 @@ function topbar() {
     h("span", { class: "brand", textContent: "DELTAVIEW/" + M.ref }),
     h("span", { textContent: `${done}/${total} reviewed` }),
     h("button", { textContent: "Next ▸", title: "Next undecided item (n)", disabled: done === total, onclick: nextUndecided }),
+    h("button", { class: beforeLayer.querySelector(".mobile") ? "sel" : "", textContent: "Mobile", title: "Check this page at mobile width (390px)", onclick: toggleMobile }),
     h("button", { textContent: full ? "▾" : "▴", title: full ? "Collapse" : "Expand", onclick: () => { barOpen = !barOpen; menu = false; render(); } }),
     h("button", { class: highlights ? "" : "sel", textContent: highlights ? "Hide highlights" : "Show highlights", onclick: () => { highlights = !highlights; outlineLayer.style.display = highlights ? "" : "none"; render(); } }),
     full && t && h("span", { class: t.passed ? "ok" : "bad", textContent: `tests: ${t.passed ? "passed" : "failed"} (${t.summary})` }),
@@ -292,7 +305,7 @@ function panelView() {
 
 function render() {
   if (openId && !here(byId(openId))) openId = null;
-  uiLayer.replaceChildren(...(view ? [openId && !els.has(openId) && h("div", { class: "bar", textContent: "Not on this page before the change" })]
+  uiLayer.replaceChildren(...(view ? [M.mode === "base" && openId && !els.has(openId) && h("div", { class: "bar", textContent: "Not on this page before the change" })]
     : [topbar(), drawer && h("div", { class: "drawer" }, closeBtn(), M.items.filter((i) => i.tier === "backstage").map(card)), panelView()]).filter(Boolean));
   for (const i of onRoute()) {
     if (outlines.has(i.id)) continue;
@@ -309,7 +322,7 @@ function render() {
     o.className = "outline" + (id === openId ? " open" : "") + ({ approved: " ok", rejected: " rej", comment: " cmt" }[i.decision] ?? "");
     const [label, btn] = o.firstChild.children;
     // decided items collapse to a symbol so they stop covering the app
-    label.textContent = view ? "BEFORE" : { approved: "✓", rejected: "✕", comment: "💬" }[i.decision] ?? "DELTAVIEW/" + M.ref;
+    label.textContent = view ? (M.mode === "base" ? "BEFORE" : "DELTAVIEW") : { approved: "✓", rejected: "✕", comment: "💬" }[i.decision] ?? "DELTAVIEW/" + M.ref;
     btn.hidden = view;
     o.firstChild.title = btn.title = i.title;
     btn.ariaLabel = "Open " + i.title;
@@ -344,8 +357,8 @@ function place() {
   }
   const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.[0].getBoundingClientRect();
   if (p) {
-    // with the before view open, the panel stays in the left half, next to the current page
-    const w = p.offsetWidth || 440, vw = beforeLayer.firstChild ? innerWidth / 2 : innerWidth;
+    // with the before or mobile view open, the panel stays left of it, next to the current page
+    const w = p.offsetWidth || 440, vw = beforeLayer.firstChild?.getBoundingClientRect().left ?? innerWidth;
     const right = r ? r.right + 12 : vw - w - 12;
     const left = r ? (right + w <= vw - 8 ? right : Math.max(8, r.left - w - 12)) : right;
     p.style.left = left + "px";
@@ -356,7 +369,7 @@ function place() {
 
 async function start() {
   M = (await api("manifest")).body;
-  view = M.mode === "base";
+  view = M.mode === "base" || window.top !== window;
   const hash = /dv=([^&]+)/.exec(location.hash)?.[1];
   const target = hash && byId(decodeURIComponent(hash));
   document.documentElement.append(host);
