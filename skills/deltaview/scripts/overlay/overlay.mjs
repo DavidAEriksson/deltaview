@@ -1,4 +1,4 @@
-import { toBlocks, progress, itemsForPath, canSubmit } from "./logic.mjs";
+import { toBlocks, progress, itemsForPath, canSubmit, nextItem } from "./logic.mjs";
 
 const CSS = `
 :host{all:initial}
@@ -56,7 +56,7 @@ const api = async (path, body) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 
-let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null;
+let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null; // cursor: last opened item, for j/k/n
 try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
 const drafts = {}; // itemId -> { choice, comment, msg }
 const els = new Map(); // itemId -> resolved element
@@ -90,12 +90,55 @@ function resolveAll() {
   }
 }
 
+const cardEl = (id) => [...uiLayer.querySelectorAll(".card")].find((c) => c.dataset.item === id);
+
 function openItem(i) {
+  if (!i) return;
   if (i.tier === "backstage" || (!i.route && !i.selector)) { drawer = true; openId = null; }
   else if (!here(i)) { location.href = i.route + "#dv=" + i.id; return; }
   else { openId = i.id; drawer = false; pendingScroll = i.id; resolveAll(); }
+  cursor = i.id;
   menu = false;
   render();
+  if (drawer) cardEl(i.id)?.scrollIntoView({ block: "start" });
+}
+
+const nextUndecided = () => openItem(nextItem(M.items, cursor, 1, (i) => !i.decision));
+// the item a/r/c act on: the open panel, or the drawer card last opened
+const active = () => byId(openId) ?? (drawer ? byId(cursor) : null);
+
+async function save(i, decision, comment) {
+  const r = await api("decision", { itemId: i.id, decision, comment });
+  if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); delete drafts[i.id]; }
+  else draft(i).msg = r.body.error ?? "Could not save decision";
+  render();
+}
+
+function choose(c) {
+  const i = active();
+  if (!i) return;
+  draft(i).choice = c;
+  render();
+  cardEl(i.id)?.querySelector("textarea").focus();
+}
+
+const keys = {
+  j: () => openItem(nextItem(M.items, cursor, 1)),
+  k: () => openItem(nextItem(M.items, cursor, -1)),
+  n: nextUndecided,
+  a: () => { const i = active(); if (i) save(i, "approved", draft(i).comment); },
+  r: () => choose("rejected"),
+  c: () => choose("comment"),
+};
+
+function onKey(e) {
+  if (e.key === "Escape") { if (openId || drawer || menu) closeAll(); return; }
+  const t = e.composedPath()[0];
+  // never steal keys from text fields (the app's or ours) or from shortcuts with modifiers
+  if (e.ctrlKey || e.metaKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !keys[e.key]) return;
+  e.preventDefault();
+  e.stopPropagation();
+  keys[e.key]();
 }
 
 function closeAll() { openId = null; drawer = false; menu = false; render(); }
@@ -119,14 +162,9 @@ function card(i) {
   const btns = ["approved", "rejected", "comment"].map((c) => h("button", { class: d.choice === c ? "sel" : "", textContent: { approved: "Approve", rejected: "Reject", comment: "Comment" }[c], onclick: () => { d.choice = c; btns.forEach((b, n) => b.classList.toggle("sel", ["approved", "rejected", "comment"][n] === c)); sync(); } }));
   const sync = () => { submit.disabled = !d.choice || !canSubmit(d.choice, ta.value); };
   ta.addEventListener("input", () => { d.comment = ta.value; sync(); });
-  submit.addEventListener("click", async () => {
-    submit.disabled = true;
-    const r = await api("decision", { itemId: i.id, decision: d.choice, comment: ta.value });
-    if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); d.msg = ""; render(); }
-    else { d.msg = r.body.error ?? "Could not save decision"; msg.textContent = d.msg; sync(); }
-  });
+  submit.addEventListener("click", () => { submit.disabled = true; save(i, d.choice, ta.value); });
   sync();
-  return h("div", { class: "card" },
+  const c = h("div", { class: "card" },
     i.tier === "backstage" && h("div", { class: "tag", textContent: "Not visually verified" }),
     h("h3", { textContent: i.title }),
     i.chain.length > 0 && h("div", { class: "crumbs" }, i.chain.flatMap((c, n) => [n ? " › " : "", h("b", { textContent: c })])),
@@ -138,12 +176,10 @@ function card(i) {
     h("div", { class: "act" },
       h("div", { class: i.decision ? "ok" : "muted", textContent: i.decision ? "Decision: " + i.decision : "No decision yet" }),
       h("div", {}, btns), ta, submit,
-      i.decision && h("button", { textContent: "Reset", title: "Clear the decision", style: "margin-left:8px", onclick: async () => {
-        const r = await api("decision", { itemId: i.id, decision: null });
-        if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); delete drafts[i.id]; render(); }
-        else { msg.textContent = r.body.error ?? "Could not reset"; }
-      } }),
+      i.decision && h("button", { textContent: "Reset", title: "Clear the decision", style: "margin-left:8px", onclick: () => save(i, null) }),
       msg));
+  c.dataset.item = i.id;
+  return c;
 }
 
 function topbar() {
@@ -164,6 +200,7 @@ function topbar() {
     h("span", { class: "grip", textContent: "⠿", title: "Drag to move", onpointerdown: drag }),
     h("span", { class: "brand", textContent: "DELTAVIEW/" + M.ref }),
     h("span", { textContent: `${done}/${total} reviewed` }),
+    h("button", { textContent: "Next ▸", title: "Next undecided item (n)", disabled: done === total, onclick: nextUndecided }),
     h("button", { textContent: full ? "▾" : "▴", title: full ? "Collapse" : "Expand", onclick: () => { barOpen = !barOpen; menu = false; render(); } }),
     h("button", { class: highlights ? "" : "sel", textContent: highlights ? "Hide highlights" : "Show highlights", onclick: () => { highlights = !highlights; outlineLayer.style.display = highlights ? "" : "none"; render(); } }),
     full && t && h("span", { class: t.passed ? "ok" : "bad", textContent: `tests: ${t.passed ? "passed" : "failed"} (${t.summary})` }),
@@ -172,7 +209,8 @@ function topbar() {
       : h("span", { class: finishMsg.bad ? "bad" : finishMsg.warn ? "warn" : "ok", textContent: finishMsg.text })),
     full && h("button", { textContent: "Items ▾", onclick: () => { menu = !menu; render(); } }),
     full && h("button", { class: drawer ? "sel" : "", textContent: "Backstage", onclick: () => { drawer = !drawer; menu = false; render(); } }),
-    full && finish);
+    full && finish,
+    full && h("span", { class: "muted", textContent: "keys: j/k prev/next · n undecided · a/r/c decide · esc close" }));
   if (barPos) Object.assign(bar.style, { left: Math.min(barPos.x, innerWidth - 120) + "px", top: Math.min(barPos.y, innerHeight - 40) + "px", bottom: "auto" });
   return bar;
 }
@@ -284,7 +322,7 @@ async function start() {
   else { if (hash) history.replaceState(history.state, "", location.pathname + location.search); render(); }
   addEventListener("hashchange", () => { const i = byId(decodeURIComponent(/dv=([^&]+)/.exec(location.hash)?.[1] ?? "")); if (i) openItem(i); });
   for (const m of ["pushState", "replaceState"]) { const o = history[m]; history[m] = function (...a) { const x = o.apply(this, a); setTimeout(() => { resolveAll(); render(); }, 0); return x; }; }
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && (openId || drawer || menu)) closeAll(); }, true);
+  addEventListener("keydown", onKey, true);
   addEventListener("popstate", () => { resolveAll(); render(); });
   place();
 }

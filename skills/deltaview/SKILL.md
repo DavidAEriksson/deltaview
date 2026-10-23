@@ -112,7 +112,7 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
 2. Pick a free port: `node -e 's=require("net").createServer().listen(0,()=>{console.log(s.address().port);s.close()})'`.
 3. Start `DV serve --manifest <manifest> --target <devUrl> --port <port>` with Bash `run_in_background`. Its first output line is `{"proxyUrl":"…","port":…}`. If it exits with `deltaview: …` instead, show the error and pick another port once.
 4. `tabs_context_mcp` (needed when resuming, which skips step 7), then `tabs_create_mcp` and `navigate` to `proxyUrl` (keep `#` fragments off). Tell the user:
-   "Review is open in Chrome at <proxyUrl>. The Deltaview bar is bottom-left: click an item to see its diff and summary, then approve / reject (reason required) / comment. Backstage items are in the drawer. Click **Finish review** when done. If the app needs a login, log in yourself in that tab."
+   "Review is open in Chrome at <proxyUrl>. The Deltaview bar is bottom-left: click an item to see its diff and summary, then approve / reject (reason required) / comment. Keys: j/k previous/next item, n next undecided, a/r/c approve/reject/comment, Esc close. Backstage items are in the drawer. Click **Finish review** when done. If the app needs a login, log in yourself in that tab."
 5. Don't poll. The serve process exits when the reviewer clicks Finish, and you're re-invoked then. Decisions are saved to `<manifest>` immediately; if the session is interrupted, running `/deltaview <ref>` again resumes.
 
 ## 9. On server exit
