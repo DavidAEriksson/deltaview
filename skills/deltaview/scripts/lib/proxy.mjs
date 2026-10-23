@@ -1,5 +1,7 @@
 import http from "node:http";
+import https from "node:https";
 import net from "node:net";
+import tls from "node:tls";
 import fs from "node:fs";
 import { loadManifest, saveManifest, applyDecision } from "./manifest.mjs";
 
@@ -24,6 +26,7 @@ const readBody = (req) => new Promise((ok, no) => { const c = []; req.on("data",
 
 export function createServer({ manifestPath, target, postReview }) {
   const t = new URL(target);
+  const secure = t.protocol === "https:", port = Number(t.port || (secure ? 443 : 80));
   let resolveFinished, finishing = false;
   const finished = new Promise((r) => { resolveFinished = r; });
 
@@ -87,7 +90,7 @@ export function createServer({ manifestPath, target, postReview }) {
     if (m) return api(req, res, m[1]);
     const headers = upHeaders(req);
     delete headers["accept-encoding"];
-    const up = http.request({ hostname: t.hostname, port: t.port || 80, path: req.url, method: req.method, headers, agent: false }, (r) => {
+    const up = (secure ? https : http).request({ hostname: t.hostname, port, path: req.url, method: req.method, headers, agent: false }, (r) => {
       const h = { ...r.headers };
       if (h.location) h.location = rewriteLocation(h.location, t.origin, `http://${req.headers.host}`);
       if (!/^text\/html/i.test(h["content-type"] ?? "")) { res.writeHead(r.statusCode, h); return r.pipe(res); }
@@ -107,7 +110,7 @@ export function createServer({ manifestPath, target, postReview }) {
   });
 
   server.on("upgrade", (req, sock, head) => {
-    const up = net.connect(Number(t.port || 80), t.hostname, () => {
+    const up = (secure ? tls : net).connect({ port, host: t.hostname }, () => {
       const lines = Object.entries(upHeaders(req)).map(([k, v]) => `${k}: ${v}`);
       up.write(`${req.method} ${req.url} HTTP/1.1\r\n${lines.join("\r\n")}\r\n\r\n`);
       if (head.length) up.write(head);
