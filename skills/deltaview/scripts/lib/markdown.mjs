@@ -9,6 +9,8 @@ export function renderMarkdown(m) {
       `- Decision: ${it.decision ?? "undecided"}${it.carriedOver ? " (carried over from the last review)" : ""}`);
     if (it.changedSinceReview) out.push("- Changed since the last review");
     if (it.comment) out.push(`- Comment: ${it.comment}`);
+    const l = it.line && m.hunks[it.line.hunkId]?.lines[it.line.index];
+    if (l) out.push(`- On line: ${m.hunks[it.line.hunkId].file}:${l.newLine ?? l.oldLine}`);
     out.push(`- Files: ${files.join(", ")}`, "", it.summary);
   }
   return out.join("\n") + "\n";

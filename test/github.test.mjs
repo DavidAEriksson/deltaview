@@ -135,3 +135,10 @@ test("defaultRun: child exits before reading stdin -> rejects with stderr, no EP
   const { defaultRun } = await import("../skills/deltaview/scripts/lib/github.mjs");
   await assert.rejects(defaultRun("sh", ["-c", "echo err >&2; exit 1"], "x".repeat(4 * 1024 * 1024)), /^Error: err$/);
 });
+
+test("a rejection with a line anchors the inline comment on that line", () => {
+  const m = fx();
+  m.items[1].line = { hunkId: "h2", index: 0 };
+  const del = m.hunks.h2.lines[0];
+  assert.deepEqual(byPath(buildReview(m), "src/b.tsx"), { path: "src/b.tsx", body: "❌ Rejected: Total wrong", line: del.oldLine, side: del.type === "del" ? "LEFT" : "RIGHT" });
+});

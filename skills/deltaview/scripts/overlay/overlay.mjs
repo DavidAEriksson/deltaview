@@ -36,6 +36,7 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .blk{padding:4px 8px;white-space:pre-wrap;word-break:break-all}
 .blk.add{background:#2d4a2d;color:#5fb584}.blk.change{background:#503615;color:#d9822b}
 .blk.del{background:#6e4343;color:#f08080}.blk.ctx{color:#5c6773}
+.blk>div{cursor:pointer}.blk>div:hover{background:rgba(255,255,255,.06)}.blk>div.pick{outline:1px solid #fff}
 .ln{color:#5c6773;user-select:none}.hl{background:#7a4f17;color:#ffcf8a}
 .tag{display:inline-block;color:#d9822b;border:1px solid #d9822b;padding:0 5px;margin-bottom:4px}
 .act{margin-top:8px;padding:8px;background:#162430;border:1px solid #2c4155}
@@ -63,7 +64,7 @@ const api = async (path, body) => {
 
 let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null, view = false; // cursor: last opened item, for j/k/n; view: outlines only (the before page)
 try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
-const drafts = {}; // itemId -> { choice, comment, msg }
+const drafts = {}; // itemId -> { choice, comment, line, msg }
 const els = new Map(); // itemId -> matched elements; the first is the anchor, the rest other instances
 const outlines = new Map(); // itemId -> outline div
 
@@ -115,8 +116,8 @@ const nextUndecided = () => openItem(nextItem(M.items, cursor, 1, (i) => !i.deci
 // the item a/r/c act on: the open panel, or the drawer card last opened
 const active = () => byId(openId) ?? (drawer ? byId(cursor) : null);
 
-async function save(i, decision, comment) {
-  const r = await api("decision", { itemId: i.id, decision, comment });
+async function save(i, decision, comment, line = null) {
+  const r = await api("decision", { itemId: i.id, decision, comment, line });
   if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); delete drafts[i.id]; }
   else draft(i).msg = r.body.error ?? "Could not save decision";
   render();
@@ -159,9 +160,10 @@ function showBefore(i) {
     h("iframe", { src: M.baseUrl + i.route + "#dv=" + encodeURIComponent(i.id), title: "Before: " + i.title })));
 }
 
-function draft(i) { return (drafts[i.id] ??= { choice: i.decision, comment: i.comment ?? "", msg: "" }); }
+function draft(i) { return (drafts[i.id] ??= { choice: i.decision, comment: i.comment ?? "", line: i.line ?? null, msg: "" }); }
 
 function diffView(i) {
+  const d = draft(i);
   return i.hunkIds.map((id) => {
     const hk = M.hunks[id];
     if (!hk) return null;
@@ -173,7 +175,9 @@ function diffView(i) {
           // in a change block the k-th removed line pairs with the k-th added line
           const pair = b.kind === "change" && (l.type === "del" ? adds[dels.indexOf(l)] : dels[adds.indexOf(l)]);
           const [p, s] = pair ? changeSpan(l.text, pair.text) : [0, 0], end = l.text.length - s;
-          return h("div", {}, h("span", { class: "ln", textContent: String(l.newLine ?? l.oldLine).padStart(w) + " " }),
+          const at = { hunkId: id, index: hk.lines.indexOf(l) }, picked = d.line?.hunkId === id && d.line.index === at.index;
+          // clicking a line anchors the rejection/comment there; clicking it again goes back to the item's first change
+          return h("div", { class: picked ? "pick" : "", title: "Comment on this line", onclick: () => { d.line = picked ? null : at; render(); } }, h("span", { class: "ln", textContent: String(l.newLine ?? l.oldLine).padStart(w) + " " }),
             l.type === "add" ? "+" : l.type === "del" ? "-" : " ",
             p + s ? [l.text.slice(0, p), h("span", { class: "hl", textContent: l.text.slice(p, end) }), l.text.slice(end)] : l.text);
         }));
@@ -189,7 +193,8 @@ function card(i) {
   const btns = ["approved", "rejected", "comment"].map((c) => h("button", { class: d.choice === c ? "sel" : "", textContent: { approved: "Approve", rejected: "Reject", comment: "Comment" }[c], onclick: () => { d.choice = c; btns.forEach((b, n) => b.classList.toggle("sel", ["approved", "rejected", "comment"][n] === c)); sync(); } }));
   const sync = () => { submit.disabled = !d.choice || !canSubmit(d.choice, ta.value); };
   ta.addEventListener("input", () => { d.comment = ta.value; sync(); });
-  submit.addEventListener("click", () => { submit.disabled = true; save(i, d.choice, ta.value); });
+  submit.addEventListener("click", () => { submit.disabled = true; save(i, d.choice, ta.value, d.choice === "approved" ? null : d.line); });
+  const picked = d.line && M.hunks[d.line.hunkId].lines[d.line.index];
   sync();
   const c = h("div", { class: "card" },
     i.tier === "backstage" && h("div", { class: "tag", textContent: "Not visually verified" }),
@@ -205,7 +210,9 @@ function card(i) {
     i.affects.length > 0 && h("div", { class: "muted", textContent: "Affects: " + i.affects.join(", ") }),
     h("div", { class: "act" },
       h("div", { class: i.decision ? "ok" : "muted", textContent: i.decision ? "Decision: " + i.decision : "No decision yet" }),
-      h("div", {}, btns), ta, submit,
+      h("div", {}, btns), ta,
+      h("div", { class: "muted", textContent: picked ? `On ${M.hunks[d.line.hunkId].file}:${picked.newLine ?? picked.oldLine} (click the line again to clear)` : "Click a diff line to comment on that line" }),
+      submit,
       i.decision && h("button", { textContent: "Reset", title: "Clear the decision", style: "margin-left:8px", onclick: () => save(i, null) }),
       msg));
   c.dataset.item = i.id;

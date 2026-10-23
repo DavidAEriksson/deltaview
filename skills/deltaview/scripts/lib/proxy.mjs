@@ -52,7 +52,7 @@ export function createServer({ manifestPath, target, postReview, mode = null, ba
         try {
           const b = JSON.parse(await readBody(req));
           const m = loadManifest(manifestPath);
-          applyDecision(m, { itemId: b.itemId, decision: b.decision, comment: b.comment ?? "" });
+          applyDecision(m, { itemId: b.itemId, decision: b.decision, comment: b.comment ?? "", line: b.line ?? null });
           saveManifest(manifestPath, m);
           item = m.items.find((i) => i.id === b.itemId);
         } catch (e) { return json(res, 400, { error: e.message }); }

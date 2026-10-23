@@ -33,9 +33,10 @@ export function buildReview(m) {
     if (!first) { bodyOnly.push(it); continue; }
     // approvals go in the body only: one inline "approved" per item is noise on the PR
     if (!it.decision || it.decision === "approved") continue;
-    const p = pathOf(first);
+    const at = it.line && m.hunks[it.line.hunkId], l = at?.lines[it.line.index];
+    const p = pathOf(at || first);
     const others = [...new Set(hunks.map(pathOf))].filter((f) => f !== p);
-    comments.push({ path: p, body: commentBody(it, others), ...anchor(first) });
+    comments.push({ path: p, body: commentBody(it, others), ...(l ? (l.type === "del" ? { line: l.oldLine, side: "LEFT" } : { line: l.newLine, side: "RIGHT" }) : anchor(first)) });
   }
 
   const lines = ["## Deltaview review", "",

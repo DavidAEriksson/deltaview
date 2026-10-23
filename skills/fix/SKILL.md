@@ -25,7 +25,7 @@ Prefer a manifest with `"status":"finished"`. If the newest one is `in_progress`
 ## 2. List the feedback
 
 ```
-node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]));console.log("ref",m.ref,"head",m.headSha,"pr",m.pr?.url??"none");for(const i of m.items)if(i.decision==="rejected"||i.decision==="comment"){console.log("\n##",i.id,i.decision.toUpperCase(),i.title,i.tier==="backstage"?"(not visually verified)":"");console.log("reason:",i.comment);console.log("summary:",i.summary);for(const id of i.hunkIds){const h=m.hunks[id];console.log("--",h.file,"@"+h.newStart);for(const l of h.lines)console.log((l.type==="add"?"+":l.type==="del"?"-":" ")+l.text)}}' <manifest>
+node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]));console.log("ref",m.ref,"head",m.headSha,"pr",m.pr?.url??"none");for(const i of m.items)if(i.decision==="rejected"||i.decision==="comment"){console.log("\n##",i.id,i.decision.toUpperCase(),i.title,i.tier==="backstage"?"(not visually verified)":"");console.log("reason:",i.comment);const l=i.line&&m.hunks[i.line.hunkId].lines[i.line.index];if(l)console.log("on line:",m.hunks[i.line.hunkId].file+":"+(l.newLine??l.oldLine),l.text);console.log("summary:",i.summary);for(const id of i.hunkIds){const h=m.hunks[id];console.log("--",h.file,"@"+h.newStart);for(const l of h.lines)console.log((l.type==="add"?"+":l.type==="del"?"-":" ")+l.text)}}' <manifest>
 ```
 
 If nothing is rejected or commented, say so (everything was approved or left undecided) and stop. Show the user a short numbered list: id, rejected/comment, title, reason.
