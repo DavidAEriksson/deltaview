@@ -150,6 +150,7 @@ function topbar() {
   const { done, total } = progress(M.items);
   const t = M.tests;
   const finish = h("button", { class: "go", textContent: "Finish", onclick: async (e) => {
+    if (done < total && !finishMsg?.confirm) { finishMsg = { text: `${total - done} undecided: click Finish again to post anyway`, warn: true, confirm: true }; return render(); }
     e.target.disabled = true;
     const r = await api("finish", {});
     e.target.disabled = false;
