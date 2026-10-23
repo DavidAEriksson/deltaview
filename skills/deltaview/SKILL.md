@@ -83,7 +83,7 @@ Group hunks into items. **Every hunk belongs to exactly one item.** One file may
 - **indirect**: the changed code is non-visual (API handler, hook, service, util, store) but something on screen triggers it. Trace the chain from the trigger to the changed code (grep for callers, read imports, use framework knowledge) and pin the overlay to the trigger. `chain` is the breadcrumb from trigger to change, e.g. `["Save button","useSaveOrder()","POST /api/orders","orders.handler.ts"]`. Put the item's hunks in chain order.
 - **backstage**: no path to the UI (migrations, CI, config, build files, docs, lockfiles) or UI that can't be anchored. Set `howToReach` when it's UI that needs a manual interaction (e.g. "Open Settings, click Billing, then Edit").
 - Tests: attach test hunks to the item for the code they test, not to their own item.
-- Shared code used by many elements: pin it to ONE representative element and list the others in `affects` (e.g. `["Checkout › Pay button"]`).
+- Shared code used by many elements: pin it to ONE representative element and list the others in `affects` (e.g. `["Checkout › Pay button"]`). If the instances on that route share a stable selector (e.g. `[data-testid="price-tag"]`), use it: the overlay outlines the first match and shows the other matches as dim outlines.
 - `appearsUnused: true` only when the changed code has no UI path AND nothing calls it. Check with grep across `<wt>` (excluding the definition and tests) before setting it.
 - `summary`: plain language, what changed and its effect on the component or behaviour. Mention risks you noticed. No secret values.
 
@@ -92,7 +92,7 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
 {"id":"i1","tier":"direct","title":"Save button","route":"/orders/new","selector":"[data-testid=\"save\"]",
  "chain":[],"affects":[],"hunkIds":["h1","h4"],"summary":"…","howToReach":null,"appearsUnused":false}
 ```
-`route` is a URL pathname only (no query or hash; the overlay matches on `location.pathname`). `selector` is a CSS selector for `document.querySelector`. Backstage items use `"route":null,"selector":null`.
+`route` is a URL pathname only (no query or hash; the overlay matches on `location.pathname`). `selector` is a CSS selector for `document.querySelectorAll`; the first match is the anchor. Backstage items use `"route":null,"selector":null`.
 
 ### Start the app
 1. Detect the dev command: `scripts.dev`, else `scripts.start`, else `scripts.serve` (run with the detected package manager), else the framework/build-file equivalent; if unsure, ask the user.
@@ -100,7 +100,7 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
 
 ### Anchor (Chrome, read-only)
 1. `tabs_context_mcp`, then `tabs_create_mcp` for a new tab. Work only in that tab.
-2. For each direct/indirect item, `navigate` to `<devUrl><route>`, then use `find` / `read_page` to locate the element and `javascript_tool` with ONLY `document.querySelectorAll(<selector>).length` to check the selector matches exactly 1 element.
+2. For each direct/indirect item, `navigate` to `<devUrl><route>`, then use `find` / `read_page` to locate the element and `javascript_tool` with ONLY `document.querySelectorAll(<selector>).length` to check the selector matches. It must match exactly 1 element, except for shared code (below), where it may match every instance of the changed component and nothing else.
 3. Selector preference: `[data-testid="…"]` (or `data-test`, `data-cy`) → id → ARIA (`[aria-label="…"]`, `[role="…"][aria-label="…"]`, `a[href="…"]`, `button[name="…"]`) → a short structural selector built from stable attributes. Avoid `nth-child`/`nth-of-type` and generated class names. If no CSS selector is unique and stable, ask yourself whether a nearby stable container works; otherwise make it backstage.
 4. **Never click, type, hover-to-open or submit.** If the element only appears after an interaction (modal, closed tab, later form step, logged-in area you can't see) or can't be anchored for any other reason, convert the item to `backstage` with `howToReach`. If the app shows a login page, ask the user to log in themselves in that tab, then continue.
 5. Write the items as a JSON array to a file in your scratchpad, then `DV add-items --manifest <manifest> --items <file>`. If it fails, it lists every problem (uncovered hunk, duplicate hunk, missing route/selector/summary): fix the items and rerun until it succeeds.

@@ -21,6 +21,7 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .outline{position:fixed;border:2px solid #5ea1f0;background:rgba(94,161,240,.08);display:none}
 .outline.open{border-color:#fff;background:rgba(94,161,240,.18)}
 .outline.ok{border-color:#5fb584}.outline.rej{border-color:#f08080}.outline.cmt{border-color:#d9822b}
+.ghost{position:fixed;border:1px dashed;border-color:inherit;opacity:.6;pointer-events:none}
 .outline.ok .chip{color:#5fb584}.outline.rej .chip{color:#f08080}.outline.cmt .chip{color:#d9822b}
 .grip{cursor:move;color:#8a96a3;user-select:none;touch-action:none;padding:0 2px}
 .chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 0 0 6px;white-space:nowrap;line-height:16px;font-size:11px}
@@ -60,7 +61,7 @@ const api = async (path, body) => {
 let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null; // cursor: last opened item, for j/k/n
 try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
 const drafts = {}; // itemId -> { choice, comment, msg }
-const els = new Map(); // itemId -> resolved element
+const els = new Map(); // itemId -> matched elements; the first is the anchor, the rest other instances
 const outlines = new Map(); // itemId -> outline div
 
 const host = document.createElement("deltaview-root");
@@ -76,17 +77,17 @@ for (const t of ["keydown", "keyup", "keypress"]) host.addEventListener(t, (e) =
 const byId = (id) => M.items.find((i) => i.id === id);
 const onRoute = () => itemsForPath(M.items, location.pathname);
 const here = (i) => itemsForPath([i], location.pathname).length > 0;
-const resolve = (i) => { try { return i.selector ? document.querySelector(i.selector) : null; } catch { return null; } };
+const resolve = (i) => { try { return i.selector ? [...document.querySelectorAll(i.selector)] : []; } catch { return []; } };
 
 function resolveAll() {
   const cur = new Set(onRoute().map((i) => i.id));
   for (const id of [...els.keys()]) if (!cur.has(id)) els.delete(id);
   for (const i of onRoute()) {
-    const el = resolve(i);
-    el ? els.set(i.id, el) : els.delete(i.id);
+    const list = resolve(i);
+    list.length ? els.set(i.id, list) : els.delete(i.id);
   }
   if (pendingScroll && els.has(pendingScroll)) {
-    els.get(pendingScroll).scrollIntoView({ block: "center" });
+    els.get(pendingScroll)[0].scrollIntoView({ block: "center" });
     pendingScroll = null;
   }
 }
@@ -290,9 +291,14 @@ function render() {
 
 function place() {
   for (const [id, o] of outlines) {
-    const el = els.get(id), r = el?.isConnected && el.getBoundingClientRect();
+    const [el, ...extra] = els.get(id) ?? [], r = el?.isConnected && el.getBoundingClientRect();
     if (!r || (!r.width && !r.height)) { o.style.display = "none"; continue; }
     Object.assign(o.style, { display: "block", left: r.left - 3 + "px", top: r.top - 3 + "px", width: r.width + 6 + "px", height: r.height + 6 + "px" });
+    // other instances of a shared component get a dim ghost outline; read all rects before writing styles
+    while (o.children.length - 1 < extra.length) o.append(h("div", { class: "ghost" }));
+    while (o.children.length - 1 > extra.length) o.lastChild.remove();
+    extra.map((e) => e.isConnected && e.getBoundingClientRect()).forEach((g, n) => Object.assign(o.children[n + 1].style,
+      g && (g.width || g.height) ? { display: "", left: g.left - 2 + "px", top: g.top - 2 + "px", width: g.width + 4 + "px", height: g.height + 4 + "px" } : { display: "none" }));
     // keep the chip on screen: below the element when there's no room above, shifted left at the right edge
     const c = o.firstChild;
     c.style.cssText = "";
@@ -309,7 +315,7 @@ function place() {
     c.style.visibility = hit ? "hidden" : "";
     if (!hit) shown.push(b);
   }
-  const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.getBoundingClientRect();
+  const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.[0].getBoundingClientRect();
   if (p) {
     const w = p.offsetWidth || 440;
     const right = r ? r.right + 12 : innerWidth - w - 12;
