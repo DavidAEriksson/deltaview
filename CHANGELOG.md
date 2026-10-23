@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/DavidAEriksson/deltaview/compare/v1.1.0...v1.2.0) (2026-10-23)
+
+
+### Features
+
+* **github:** list approvals in the review body instead of inline comments ([ef1689a](https://github.com/DavidAEriksson/deltaview/commit/ef1689ae252b2cafa480baa6aedae62ce4d451d6))
+* **overlay:** confirm Finish when items are undecided ([c79214a](https://github.com/DavidAEriksson/deltaview/commit/c79214a45ae539fb8a7886d3f527635c96d2f006))
+
+
+### Bug Fixes
+
+* **github:** note in the review when the PR head moved during review ([7e1c8ca](https://github.com/DavidAEriksson/deltaview/commit/7e1c8caf8e18f362334544d60989ea706fe444f0))
+* **proxy:** accept self-signed certs from loopback https dev servers ([17875cc](https://github.com/DavidAEriksson/deltaview/commit/17875cc20270d5536edf3562271952ac00017cf7))
+* **proxy:** support https dev servers ([bb320ee](https://github.com/DavidAEriksson/deltaview/commit/bb320ee5220cec28c9e0b554656b08dde6e99667))
+
 ## [1.1.0](https://github.com/DavidAEriksson/deltaview/compare/v1.0.0...v1.1.0) (2026-10-22)
 
 
