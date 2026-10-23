@@ -31,9 +31,11 @@ test("event COMMENT when pr.isAuthor even with rejection, body explains", () => 
 });
 
 test("add hunk → RIGHT side, start_line..line span", () => {
-  const r = buildReview(fx());
+  const m = fx();
+  Object.assign(m.items[0], { decision: "comment", comment: "Nice" });
+  const r = buildReview(m);
   assert.deepEqual(byPath(r, "src/a.tsx"), {
-    path: "src/a.tsx", body: "✅ approved via Deltaview",
+    path: "src/a.tsx", body: "💬 Nice",
     line: 12, side: "RIGHT", start_line: 10, start_side: "RIGHT",
   });
   const single = byPath(r, "src/b.tsx");
@@ -43,11 +45,20 @@ test("add hunk → RIGHT side, start_line..line span", () => {
 });
 
 test("deletion-only hunk → LEFT side using oldLine", () => {
-  const c = byPath(buildReview(fx()), "src/old.ts");
+  const m = fx();
+  Object.assign(m.items[4], { decision: "comment", comment: "ok" });
+  const c = byPath(buildReview(m), "src/old.ts");
   assert.equal(c.side, "LEFT");
   assert.equal(c.line, 3);
   assert.equal(c.start_line, 1);
   assert.equal(c.start_side, "LEFT");
+});
+
+test("approvals get no inline comment, listed in body; backstage tagged", () => {
+  const r = buildReview(fx());
+  assert.ok(!r.comments.some((c) => c.path === "src/a.tsx" || c.path === "src/old.ts"));
+  const titles = fx().items.filter((i) => i.decision === "approved").map((i) => i.title);
+  assert.ok(r.body.includes(`### Approved\n- ${titles[0]}\n- ${titles[1]} _(not visually verified)_`));
 });
 
 test("backstage comment carries \"Not visually verified\"", () => {
@@ -86,6 +97,7 @@ test("postReview passes JSON with commit_id to fake run and returns html_url", a
   const m = fx();
   let call;
   const run = async (cmd, args, input) => {
+    if (args.includes("-q")) return { stdout: "bbb\n" };
     call = { cmd, args, input };
     return { stdout: JSON.stringify({ html_url: "https://github.com/acme/shop/pull/7#pullrequestreview-1" }) };
   };
@@ -96,6 +108,22 @@ test("postReview passes JSON with commit_id to fake run and returns html_url", a
   const body = JSON.parse(call.input);
   assert.equal(body.commit_id, "bbb");
   assert.equal(body.event, "REQUEST_CHANGES");
+  assert.doesNotMatch(body.body, /head has since moved/);
+});
+
+test("postReview notes a moved PR head and still posts at the reviewed sha", async () => {
+  let input;
+  const run = async (cmd, args, i) => (args.includes("-q") ? { stdout: "ccc1234\n" } : ((input = JSON.parse(i)), { stdout: '{"html_url":"u"}' }));
+  await postReview(fx(), run);
+  assert.equal(input.commit_id, "bbb");
+  assert.match(input.body, /Reviewed at bbb; the PR head has since moved to ccc1234/);
+});
+
+test("postReview still posts when the head lookup fails", async () => {
+  let input;
+  const run = async (cmd, args, i) => { if (args.includes("-q")) throw new Error("404"); input = JSON.parse(i); return { stdout: '{"html_url":"u"}' }; };
+  assert.equal((await postReview(fx(), run)).url, "u");
+  assert.doesNotMatch(input.body, /head has since moved/);
 });
 
 test("postReview rejects with stderr when run fails", async () => {

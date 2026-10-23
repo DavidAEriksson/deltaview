@@ -11,8 +11,7 @@ function anchor(h) {
 }
 
 function commentBody(it, others) {
-  let b = it.decision === "approved" ? "✅ approved via Deltaview"
-    : it.decision === "rejected" ? `❌ Rejected: ${it.comment}` : `💬 ${it.comment}`;
+  let b = it.decision === "rejected" ? `❌ Rejected: ${it.comment}` : `💬 ${it.comment}`;
   if (it.tier === "backstage") b += "\n\n_Not visually verified._";
   if (others.length) b += `\n\nAlso covers: ${others.join(", ")}`;
   return b;
@@ -32,7 +31,8 @@ export function buildReview(m) {
     const hunks = it.hunkIds.map((id) => m.hunks[id]);
     const first = hunks.find(hasEdit);
     if (!first) { bodyOnly.push(it); continue; }
-    if (!it.decision) continue;
+    // approvals go in the body only: one inline "approved" per item is noise on the PR
+    if (!it.decision || it.decision === "approved") continue;
     const p = pathOf(first);
     const others = [...new Set(hunks.map(pathOf))].filter((f) => f !== p);
     comments.push({ path: p, body: commentBody(it, others), ...anchor(first) });
@@ -42,6 +42,8 @@ export function buildReview(m) {
     `${count("approved")} approved, ${count("rejected")} rejected, ${count("comment")} commented, ${undecided.length} not reviewed of ${m.items.length} items.`];
   if (m.tests) lines.push("", `Tests: \`${m.tests.command}\` ${m.tests.passed ? "passed" : "FAILED"} (${m.tests.summary})`);
   if (m.newEnvVars?.length) lines.push("", `New env vars: ${m.newEnvVars.join(", ")}`);
+  const approved = m.items.filter((i) => i.decision === "approved" && !bodyOnly.includes(i));
+  if (approved.length) lines.push("", "### Approved", ...approved.map((i) => `- ${i.title}${i.tier === "backstage" ? " _(not visually verified)_" : ""}`));
   if (rejected.length) lines.push("", "### Rejections", ...rejected.map((i) => `- ${i.title}: ${i.comment}`));
   if (undecided.length) lines.push("", "### Not reviewed", ...undecided.map((i) => `- ${i.title}`));
   if (bodyOnly.length) lines.push("", "### Binary / no line changes (no inline comment)", ...bodyOnly.map((i) => `- ${i.title}${i.decision ? ` (${i.decision}${i.comment ? `: ${i.comment}` : ""})` : ""}`));
@@ -58,7 +60,11 @@ export const defaultRun = (cmd, args, input) =>
   });
 
 export async function postReview(m, run = defaultRun) {
-  const payload = JSON.stringify({ commit_id: m.headSha, ...buildReview(m) });
+  const review = buildReview(m);
+  // a failed lookup must not block posting the review
+  const head = await run("gh", ["api", `repos/${m.repo}/pulls/${m.pr.number}`, "-q", ".head.sha"]).then((r) => r.stdout.trim(), () => m.headSha);
+  if (head !== m.headSha) review.body += `\n\n⚠ Reviewed at ${m.headSha.slice(0, 7)}; the PR head has since moved to ${head.slice(0, 7)}. Inline comments may show as outdated.`;
+  const payload = JSON.stringify({ commit_id: m.headSha, ...review });
   const { stdout } = await run("gh", ["api", `repos/${m.repo}/pulls/${m.pr.number}/reviews`, "--method", "POST", "--input", "-"], payload);
   return { url: JSON.parse(stdout).html_url };
 }

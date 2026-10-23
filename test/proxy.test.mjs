@@ -244,3 +244,26 @@ test("Origin/Referer mapped from proxy origin to target origin (HTTP and upgrade
     assert.equal(s.seen.wsOrigin, to);
   } finally { sock.destroy(); await s.cleanup(); }
 });
+
+test("proxies an https dev server with a self-signed cert, including upgrades", async () => {
+  const https = await import("node:https");
+  const fx = (f) => fs.readFileSync(new URL(`./fixtures/${f}`, import.meta.url));
+  const target = https.createServer({ key: fx("tls-key.pem"), cert: fx("tls-cert.pem") }, (q, s) => {
+    s.writeHead(200, { "content-type": "text/html" }); s.end("<html><head></head></html>");
+  });
+  target.on("upgrade", (q, sock) => { sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"); sock.on("data", (d) => sock.write(d)); });
+  const tport = await listen(target);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dv-"));
+  const manifestPath = path.join(dir, "m.json");
+  fs.writeFileSync(manifestPath, JSON.stringify(baseManifest()));
+  const { server } = createServer({ manifestPath, target: `https://127.0.0.1:${tport}`, postReview: async () => ({}) });
+  const port = await listen(server);
+  try {
+    assert.ok((await req(port, "/")).text.includes(TAG));
+    const echoed = await new Promise((res, rej) => {
+      const sock = net.connect(port, "127.0.0.1", () => sock.write("GET /ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\nping"));
+      let buf = ""; sock.on("data", (d) => { buf += d; if (buf.endsWith("ping")) { sock.destroy(); res(buf); } }); sock.on("error", rej);
+    });
+    assert.match(echoed, /^HTTP\/1.1 101/);
+  } finally { await close(server); target.closeAllConnections?.(); await new Promise((r) => target.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
+});
