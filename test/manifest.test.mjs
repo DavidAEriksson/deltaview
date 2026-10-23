@@ -94,3 +94,27 @@ test("saveManifest then loadManifest round-trips and writes .md sibling", async 
   assert.match(await fs.readFile(path.join(dir, "sub", "r.md"), "utf8"), /Deltaview review/);
   assert.deepEqual((await fs.readdir(path.join(dir, "sub"))).sort(), ["r.json", "r.md"]);
 });
+
+test("carryDecisions copies decisions for identical edits, flags changed items, never carries binary", async () => {
+  const { carryDecisions } = await import("../skills/deltaview/scripts/lib/manifest.mjs");
+  const L = (type, text, n) => ({ type, text, oldLine: type === "add" ? null : n, newLine: type === "del" ? null : n });
+  const h = (id, file, lines, status = "modified") => ({ id, file, oldFile: file, status, oldStart: 1, newStart: 1, lines });
+  const prev = createManifest({ ref: "r", target: "main", baseSha: "b", headSha: "h1", repo: null, hunks: [
+    h("h1", "a.js", [L("ctx", "x", 1), L("add", "same", 2)]), h("h2", "b.js", [L("add", "old", 1)]), h("h3", "logo.png", [], "binary"), h("h4", "c.js", [L("add", "c", 1)]),
+  ] });
+  setItems(prev, [item("i1", ["h1"]), item("i2", ["h2"]), item("i3", ["h3"]), item("i4", ["h4"])]);
+  applyDecision(prev, { itemId: "i1", decision: "rejected", comment: "no" });
+  applyDecision(prev, { itemId: "i2", decision: "approved" });
+  applyDecision(prev, { itemId: "i3", decision: "approved" });
+  // same edit in a.js at a new line with new context; b.js edit changed; c.js unchanged but undecided
+  const next = createManifest({ ref: "r", target: "main", baseSha: "b", headSha: "h2", repo: null, hunks: [
+    h("h1", "a.js", [L("ctx", "y", 7), L("add", "same", 8)]), h("h2", "b.js", [L("add", "new", 1)]), h("h3", "logo.png", [], "binary"), h("h4", "c.js", [L("add", "c", 1)]),
+  ] });
+  setItems(next, [item("n1", ["h1"]), item("n2", ["h2"]), item("n3", ["h3"]), item("n4", ["h4"])]);
+  assert.equal(carryDecisions(next, prev), 1);
+  const [n1, n2, n3, n4] = next.items;
+  assert.deepEqual([n1.decision, n1.comment, n1.carriedOver, n1.changedSinceReview], ["rejected", "no", true, undefined]);
+  assert.deepEqual([n2.decision, n2.changedSinceReview], [null, true]);
+  assert.deepEqual([n3.decision, n3.changedSinceReview], [null, true]);
+  assert.deepEqual([n4.decision, n4.changedSinceReview, n4.carriedOver], [null, undefined, undefined]);
+});

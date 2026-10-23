@@ -179,6 +179,8 @@ function card(i) {
   sync();
   const c = h("div", { class: "card" },
     i.tier === "backstage" && h("div", { class: "tag", textContent: "Not visually verified" }),
+    i.changedSinceReview && h("div", { class: "tag", textContent: "Changed since your last review" }),
+    i.carriedOver && h("div", { class: "muted", textContent: "Decision carried over: unchanged since your last review" }),
     h("h3", { textContent: i.title }),
     i.chain.length > 0 && h("div", { class: "crumbs" }, i.chain.flatMap((c, n) => [n ? " › " : "", h("b", { textContent: c })])),
     i.howToReach && h("div", { class: "muted", textContent: "How to reach: " + i.howToReach }),
@@ -252,6 +254,7 @@ function menuView(down) {
     list.map((i) => h("button", { class: "row", onclick: () => openItem(i) },
       h("span", { class: i.decision ? "ok" : "muted", textContent: i.decision ? "✓" : "○" }),
       h("span", { textContent: i.title }),
+      i.changedSinceReview && h("span", { class: "badge", textContent: "changed" }),
       here(i) && i.selector && !els.has(i.id) && h("span", { class: "badge", textContent: "not found on this page" }))))));
 }
 

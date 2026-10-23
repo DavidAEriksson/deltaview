@@ -4,9 +4,9 @@ import { execFileSync } from "node:child_process";
 import { parseDiff } from "../lib/diff.mjs";
 import fs from "node:fs";
 import net from "node:net";
-import { createManifest, loadManifest, saveManifest, setItems } from "../lib/manifest.mjs";
+import { createManifest, loadManifest, saveManifest, setItems, carryDecisions } from "../lib/manifest.mjs";
 import { newEnvVars } from "../lib/envcheck.mjs";
-import { findResumable } from "../lib/resume.mjs";
+import { findResumable, findPrevious } from "../lib/resume.mjs";
 import { createServer } from "../lib/proxy.mjs";
 import { postReview } from "../lib/github.mjs";
 
@@ -46,11 +46,11 @@ function env(argv) {
   console.log(JSON.stringify(envVars(v.repo, v.base, v.head, parseDiff(gitDiff(v.repo, v.base, v.head)))));
 }
 
-function resume(argv) {
+const finder = (name, find) => (argv) => {
   const { values: v } = parseArgs({ args: argv, options: { dir: { type: "string" }, ref: { type: "string" }, head: { type: "string" } } });
-  for (const k of ["dir", "ref", "head"]) if (!v[k]) fail(`resume: missing --${k}`);
-  console.log(findResumable(v.dir, v.ref, v.head) ?? "");
-}
+  for (const k of ["dir", "ref", "head"]) if (!v[k]) fail(`${name}: missing --${k}`);
+  console.log(find(v.dir, v.ref, v.head) ?? "");
+};
 
 function patch(argv) {
   const { values: v } = parseArgs({ args: argv, options: { manifest: { type: "string" }, json: { type: "string" } } });
@@ -62,10 +62,16 @@ function patch(argv) {
 }
 
 function addItems(argv) {
-  const { values: v } = parseArgs({ args: argv, options: { manifest: { type: "string" }, items: { type: "string" } } });
+  const { values: v } = parseArgs({ args: argv, options: { manifest: { type: "string" }, items: { type: "string" }, "carry-from": { type: "string" } } });
   for (const k of ["manifest", "items"]) if (!v[k]) fail(`add-items: missing --${k}`);
   // setItems throws with the full newline-joined problem list; the top-level handler prints it
-  saveManifest(v.manifest, setItems(loadManifest(v.manifest), JSON.parse(fs.readFileSync(v.items, "utf8"))));
+  const m = setItems(loadManifest(v.manifest), JSON.parse(fs.readFileSync(v.items, "utf8")));
+  if (v["carry-from"]) {
+    const n = carryDecisions(m, loadManifest(v["carry-from"]));
+    m.previousReview = v["carry-from"];
+    console.log(`carried ${n} decisions; ${m.items.filter((i) => i.changedSinceReview).length} of ${m.items.length} items changed since the last review`);
+  }
+  saveManifest(v.manifest, m);
 }
 
 function serve(argv) {
@@ -88,7 +94,7 @@ function serve(argv) {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const commands = { init, env, resume, patch, "add-items": addItems, serve };
+const commands = { init, env, resume: finder("resume", findResumable), previous: finder("previous", findPrevious), patch, "add-items": addItems, serve };
 try {
   (commands[cmd] ?? (() => fail(`unknown subcommand ${cmd ?? ""}`)))(rest);
 } catch (e) { fail(e.message); }

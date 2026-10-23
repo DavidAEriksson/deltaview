@@ -66,3 +66,20 @@ export function applyDecision(manifest, { itemId, decision, comment = "" }) {
   Object.assign(it, { decision, comment, decidedAt: new Date().toISOString() });
   return manifest;
 }
+
+// content of a hunk's edits, without line numbers or context, so moved-but-unchanged code still matches; binary content is unknown
+const hunkKey = (h) => (h.status === "binary" ? null : JSON.stringify([h.file, h.oldFile, h.status, h.lines.filter((l) => l.type !== "ctx").map((l) => l.type[0] + l.text)]));
+const itemKey = (m, it) => { const ks = it.hunkIds.map((id) => hunkKey(m.hunks[id])); return ks.includes(null) ? null : ks.sort().join("\n"); };
+
+// copies decisions from an earlier review onto items whose edits are byte-identical; flags items with no identical counterpart
+export function carryDecisions(manifest, prev) {
+  const old = new Map(prev.items.map((i) => [itemKey(prev, i), i]));
+  old.delete(null);
+  let carried = 0;
+  for (const it of manifest.items) {
+    const o = old.get(itemKey(manifest, it));
+    if (!o) it.changedSinceReview = true;
+    else if (o.decision) { Object.assign(it, { decision: o.decision, comment: o.comment, decidedAt: o.decidedAt, carriedOver: true }); carried++; }
+  }
+  return carried;
+}

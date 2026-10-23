@@ -43,9 +43,7 @@ Ground rules (never break them):
 Run `DV resume --dir <main>/.deltaview/reviews --ref <ref> --head <headSha>`.
 - If it prints a path, that is `<manifest>`. Tell the user "Resuming the unfinished review from <manifest>; earlier decisions are kept." Do step 4, then skip to step 8.
   `resume` only returns an `in_progress` manifest with this head sha AND at least one item; one left with no items (the earlier run stopped before step 7 finished) is ignored and a fresh review starts.
-- If it prints nothing but this lists a file (an unfinished review with items, for another commit):
-  `node -e 'const fs=require("fs"),[d,s,r]=process.argv.slice(1);try{for(const f of fs.readdirSync(d))if(f.startsWith(s+"-")&&f.endsWith(".json")){const m=JSON.parse(fs.readFileSync(d+"/"+f));if(m.ref===r&&m.status==="in_progress"&&m.items?.length)console.log(f)}}catch{}' <main>/.deltaview/reviews <slug> '<ref>'`
-  tell the user: "There is an unfinished review of `<ref>` for an older commit; its decisions were not carried over. Starting a fresh review."
+- If it prints nothing, run `DV previous --dir <main>/.deltaview/reviews --ref <ref> --head <headSha>`. If that prints a path, it is `<previous>` (an earlier review of `<ref>` at another commit, e.g. before the author pushed fixes). Tell the user: "Found an earlier review of `<ref>`; decisions on items whose changes are identical will be carried over, the rest are marked changed since your last review." It is used in step 7.
 
 ## 4. Checkout
 
@@ -78,7 +76,7 @@ Run `DV resume --dir <main>/.deltaview/reviews --ref <ref> --head <headSha>`.
 ### Analyse
 List the hunks: `node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1]));for(const h of Object.values(m.hunks))console.log(h.id,h.status,h.file,"@"+h.newStart,"+"+h.lines.filter(l=>l.type=="add").length,"-"+h.lines.filter(l=>l.type=="del").length)' <manifest>`. Read the diff (`git -C <main> diff <baseSha>...<headSha>`) and the code around it in `<wt>`.
 
-Group hunks into items. **Every hunk belongs to exactly one item.** One file may be split across items if its hunks belong to different features. Tiers:
+Group hunks into items. **Every hunk belongs to exactly one item.** If step 3 found `<previous>`, read its items first and keep their grouping, titles, routes and selectors for code that hasn't changed: a decision only carries over when an item's set of edits is identical. One file may be split across items if its hunks belong to different features. Tiers:
 - **direct**: the changed code renders something (component, template, markup, styles). The overlay sits on that element.
 - **indirect**: the changed code is non-visual (API handler, hook, service, util, store) but something on screen triggers it. Trace the chain from the trigger to the changed code (grep for callers, read imports, use framework knowledge) and pin the overlay to the trigger. `chain` is the breadcrumb from trigger to change, e.g. `["Save button","useSaveOrder()","POST /api/orders","orders.handler.ts"]`. Put the item's hunks in chain order.
 - **backstage**: no path to the UI (migrations, CI, config, build files, docs, lockfiles) or UI that can't be anchored. Set `howToReach` when it's UI that needs a manual interaction (e.g. "Open Settings, click Billing, then Edit").
@@ -103,7 +101,7 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
 2. For each direct/indirect item, `navigate` to `<devUrl><route>`, then use `find` / `read_page` to locate the element and `javascript_tool` with ONLY `document.querySelectorAll(<selector>).length` to check the selector matches. It must match exactly 1 element, except for shared code (below), where it may match every instance of the changed component and nothing else.
 3. Selector preference: `[data-testid="…"]` (or `data-test`, `data-cy`) → id → ARIA (`[aria-label="…"]`, `[role="…"][aria-label="…"]`, `a[href="…"]`, `button[name="…"]`) → a short structural selector built from stable attributes. Avoid `nth-child`/`nth-of-type` and generated class names. If no CSS selector is unique and stable, ask yourself whether a nearby stable container works; otherwise make it backstage.
 4. **Never click, type, hover-to-open or submit.** If the element only appears after an interaction (modal, closed tab, later form step, logged-in area you can't see) or can't be anchored for any other reason, convert the item to `backstage` with `howToReach`. If the app shows a login page, ask the user to log in themselves in that tab, then continue.
-5. Write the items as a JSON array to a file in your scratchpad, then `DV add-items --manifest <manifest> --items <file>`. If it fails, it lists every problem (uncovered hunk, duplicate hunk, missing route/selector/summary): fix the items and rerun until it succeeds.
+5. Write the items as a JSON array to a file in your scratchpad, then `DV add-items --manifest <manifest> --items <file>`, plus `--carry-from <previous>` if step 3 found one (it prints how many decisions carried over; tell the user). If it fails, it lists every problem (uncovered hunk, duplicate hunk, missing route/selector/summary): fix the items and rerun until it succeeds.
 6. Close the anchoring tab with `tabs_close_mcp`.
 
 ## 8. Serve

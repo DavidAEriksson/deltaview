@@ -6,7 +6,8 @@ export function renderMarkdown(m) {
   for (const it of m.items) {
     const files = [...new Set(it.hunkIds.map((id) => m.hunks[id]).filter(Boolean).map((h) => h.file))];
     out.push("", `## ${it.title}`, `- Tier: ${it.tier}${it.tier === "backstage" ? " (not visually verified)" : ""}`,
-      `- Decision: ${it.decision ?? "undecided"}`);
+      `- Decision: ${it.decision ?? "undecided"}${it.carriedOver ? " (carried over from the last review)" : ""}`);
+    if (it.changedSinceReview) out.push("- Changed since the last review");
     if (it.comment) out.push(`- Comment: ${it.comment}`);
     out.push(`- Files: ${files.join(", ")}`, "", it.summary);
   }
