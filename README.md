@@ -34,6 +34,8 @@ If the old version still loads after the restart, open `/plugin`, go to the inst
 
 The skill is `/deltaview:deltaview`; the bare `/deltaview` works too unless another command already has that name.
 
+After a review, `/deltaview:fix [branch]` works through the rejected and commented items in the reviewed branch, using each item's hunks and reason. Run `/deltaview <branch>` again once the fixes are pushed: decisions on items whose changes are unchanged carry over, and the rest are marked "changed since your last review".
+
 Deltaview checks the ref out in a temporary git worktree (your working copy is untouched), copies your untracked `.env*` files into it, installs dependencies, runs the tests, starts the dev server and a small local proxy that injects the overlay. The agent only navigates and reads the page while anchoring overlays; it never clicks in your app. If you stop before finishing, running `/deltaview` on the same ref and commit resumes with your decisions kept.
 
 ## Requirements
