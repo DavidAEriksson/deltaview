@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toBlocks, progress, itemsForPath, canSubmit, nextItem } from "../skills/deltaview/scripts/overlay/logic.mjs";
+import { toBlocks, progress, itemsForPath, canSubmit, nextItem, changeSpan } from "../skills/deltaview/scripts/overlay/logic.mjs";
+
+test("changeSpan marks whole changed words, keeps shared prefix/suffix", () => {
+  const mid = (a, b) => { const [p, s] = changeSpan(a, b); return [a.slice(p, a.length - s), b.slice(p, b.length - s)]; };
+  assert.deepEqual(mid("const total = sum(a);", "const total = sum(b);"), ["a", "b"]);
+  assert.deepEqual(mid("color: red;", "color: green;"), ["red", "green"]);
+  assert.deepEqual(mid("fooBar()", "fooBaz()"), ["fooBar", "fooBaz"]);
+  assert.deepEqual(mid("x", "x"), ["", ""]);
+  assert.deepEqual(mid("abc", "xyz"), ["abc", "xyz"]);
+  assert.deepEqual(mid("a(1)", "a(1, 2)"), ["", ", 2"]);
+});
 
 test("nextItem steps and wraps both ways, starts at an end with no current", () => {
   const items = ["a", "b", "c"].map((id) => ({ id }));

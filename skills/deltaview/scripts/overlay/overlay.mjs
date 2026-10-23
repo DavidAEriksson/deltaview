@@ -1,4 +1,4 @@
-import { toBlocks, progress, itemsForPath, canSubmit, nextItem } from "./logic.mjs";
+import { toBlocks, progress, itemsForPath, canSubmit, nextItem, changeSpan } from "./logic.mjs";
 
 const CSS = `
 :host{all:initial}
@@ -35,6 +35,7 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .blk{padding:4px 8px;white-space:pre-wrap;word-break:break-all}
 .blk.add{background:#2d4a2d;color:#5fb584}.blk.change{background:#503615;color:#d9822b}
 .blk.del{background:#6e4343;color:#f08080}.blk.ctx{color:#5c6773}
+.ln{color:#5c6773;user-select:none}.hl{background:#7a4f17;color:#ffcf8a}
 .tag{display:inline-block;color:#d9822b;border:1px solid #d9822b;padding:0 5px;margin-bottom:4px}
 .act{margin-top:8px;padding:8px;background:#162430;border:1px solid #2c4155}
 .act textarea{width:100%;height:56px;margin:6px 0;background:#0b1520;color:#cfd8e3;border:1px solid #2c4155;padding:4px}
@@ -149,8 +150,19 @@ function diffView(i) {
   return i.hunkIds.map((id) => {
     const hk = M.hunks[id];
     if (!hk) return null;
+    const w = String(Math.max(0, ...hk.lines.map((l) => l.newLine ?? l.oldLine))).length;
     return h("div", {}, h("div", { class: "file", textContent: hk.file + (hk.status !== "modified" ? ` (${hk.status})` : "") }),
-      toBlocks(hk.lines).map((b) => h("div", { class: "blk " + b.kind, textContent: b.lines.map((l) => (l.type === "add" ? "+" : l.type === "del" ? "-" : " ") + l.text).join("\n") })));
+      toBlocks(hk.lines).map((b) => {
+        const dels = b.lines.filter((l) => l.type === "del"), adds = b.lines.filter((l) => l.type === "add");
+        return h("div", { class: "blk " + b.kind }, b.lines.map((l) => {
+          // in a change block the k-th removed line pairs with the k-th added line
+          const pair = b.kind === "change" && (l.type === "del" ? adds[dels.indexOf(l)] : dels[adds.indexOf(l)]);
+          const [p, s] = pair ? changeSpan(l.text, pair.text) : [0, 0], end = l.text.length - s;
+          return h("div", {}, h("span", { class: "ln", textContent: String(l.newLine ?? l.oldLine).padStart(w) + " " }),
+            l.type === "add" ? "+" : l.type === "del" ? "-" : " ",
+            p + s ? [l.text.slice(0, p), h("span", { class: "hl", textContent: l.text.slice(p, end) }), l.text.slice(end)] : l.text);
+        }));
+      }));
   });
 }
 
