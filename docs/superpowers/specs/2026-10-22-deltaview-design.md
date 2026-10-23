@@ -108,8 +108,8 @@ Follows the user's mockups (dark theme): [Direct](assets/mockup-direct.png), [In
 If an open PR exists for the branch:
 - One GitHub review per session, posted via `gh` (the pull request reviews API).
 - **Event:** `REQUEST_CHANGES` if anything is rejected; otherwise `APPROVE` if everything is approved; otherwise `COMMENT`.
-- **Inline comments:** each overlay/Backstage decision becomes an inline comment on the changed lines it covers:
-  - Approved: a short "✅ approved via Deltaview" note, so "reviewed and fine" is distinguishable from "nobody looked".
+- **Inline comments:** each rejected or commented overlay/Backstage item becomes an inline comment on the changed lines it covers:
+  - Approved: no inline comment (one per item is noise); listed under "Approved" in the review body, so "reviewed and fine" is distinguishable from "nobody looked".
   - Rejected: the reason.
   - Comment: the comment text.
   - Backstage items are tagged "not visually verified".
