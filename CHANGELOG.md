@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.0](https://github.com/DavidAEriksson/deltaview/compare/v1.3.0...v1.4.0) (2026-10-23)
+
+
+### Features
+
+* add /deltaview:fix skill to act on rejected and commented items ([06ccd7d](https://github.com/DavidAEriksson/deltaview/commit/06ccd7d8b6df24dacf469d56171c5a03a8b5ca8e))
+* anchor a rejection or comment on a line picked in the diff ([47498c2](https://github.com/DavidAEriksson/deltaview/commit/47498c26919e259e2f20cbdc81ea129547200b31))
+* before/after view of the base version, side by side ([81b1a0d](https://github.com/DavidAEriksson/deltaview/commit/81b1a0d505b458206c201ab9d75c8ae691c5ebd0))
+* carry decisions over to re-reviews of unchanged items ([c65e19f](https://github.com/DavidAEriksson/deltaview/commit/c65e19f722e223572610f4607025075d9ecd66f9))
+* **overlay:** mobile-width view of the current page with outlines ([eba8cca](https://github.com/DavidAEriksson/deltaview/commit/eba8ccacf9b912e47b84af6f7e17f4de2ff585b3))
+
 ## [1.3.0](https://github.com/DavidAEriksson/deltaview/compare/v1.2.0...v1.3.0) (2026-10-23)
 
 
