@@ -41,6 +41,9 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .act{margin-top:8px;padding:8px;background:#162430;border:1px solid #2c4155}
 .act textarea{width:100%;height:56px;margin:6px 0;background:#0b1520;color:#cfd8e3;border:1px solid #2c4155;padding:4px}
 .msg{margin-top:4px}
+.before{position:fixed;top:0;right:0;bottom:0;width:50vw;display:flex;flex-direction:column;background:#111;border-left:1px solid #2c4155;pointer-events:auto}
+.before iframe{flex:1;border:0;background:#fff}
+.bhead{display:flex;align-items:center;gap:8px;padding:4px 8px;color:#8a96a3}
 `;
 
 const h = (tag, props = {}, ...kids) => {
@@ -58,7 +61,7 @@ const api = async (path, body) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 
-let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null; // cursor: last opened item, for j/k/n
+let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null, view = false; // cursor: last opened item, for j/k/n; view: outlines only (the before page)
 try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
 const drafts = {}; // itemId -> { choice, comment, msg }
 const els = new Map(); // itemId -> matched elements; the first is the anchor, the rest other instances
@@ -70,7 +73,9 @@ const root = host.attachShadow({ mode: "open" });
 root.append(h("style", { textContent: CSS }));
 const outlineLayer = h("div", { class: "layer" });
 const uiLayer = h("div", { class: "layer" });
-root.append(outlineLayer, uiLayer);
+// render() rebuilds uiLayer; the before iframe lives outside it so it doesn't reload on every render
+const beforeLayer = h("div", { class: "layer" });
+root.append(outlineLayer, beforeLayer, uiLayer);
 // typing in the overlay must not trigger the app's hotkeys
 for (const t of ["keydown", "keyup", "keypress"]) host.addEventListener(t, (e) => e.stopPropagation());
 
@@ -101,6 +106,7 @@ function openItem(i) {
   else { openId = i.id; drawer = false; pendingScroll = i.id; resolveAll(); }
   cursor = i.id;
   menu = false;
+  if (beforeLayer.firstChild) openId ? showBefore(i) : beforeLayer.replaceChildren();
   render();
   if (drawer) cardEl(i.id)?.scrollIntoView({ block: "start" });
 }
@@ -134,6 +140,7 @@ const keys = {
 };
 
 function onKey(e) {
+  if (view) return;
   if (e.key === "Escape") { if (openId || drawer || menu) closeAll(); return; }
   const t = e.composedPath()[0];
   // never steal keys from text fields (the app's or ours) or from shortcuts with modifiers
@@ -143,7 +150,14 @@ function onKey(e) {
   keys[e.key]();
 }
 
-function closeAll() { openId = null; drawer = false; menu = false; render(); }
+function closeAll() { openId = null; drawer = false; menu = false; beforeLayer.replaceChildren(); render(); }
+
+function showBefore(i) {
+  beforeLayer.replaceChildren(h("div", { class: "before" },
+    h("div", { class: "bhead" }, h("span", { class: "spacer", textContent: `Before: ${i.title} at base ${M.baseSha.slice(0, 7)}` }),
+      h("button", { textContent: "✕", title: "Close the before view", ariaLabel: "Close the before view", onclick: () => beforeLayer.replaceChildren() })),
+    h("iframe", { src: M.baseUrl + i.route + "#dv=" + encodeURIComponent(i.id), title: "Before: " + i.title })));
+}
 
 function draft(i) { return (drafts[i.id] ??= { choice: i.decision, comment: i.comment ?? "", msg: "" }); }
 
@@ -182,6 +196,7 @@ function card(i) {
     i.changedSinceReview && h("div", { class: "tag", textContent: "Changed since your last review" }),
     i.carriedOver && h("div", { class: "muted", textContent: "Decision carried over: unchanged since your last review" }),
     h("h3", { textContent: i.title }),
+    M.baseUrl && i.tier !== "backstage" && h("button", { textContent: "Before ⇄ after", title: "Show this page before the change, side by side", onclick: () => showBefore(i) }),
     i.chain.length > 0 && h("div", { class: "crumbs" }, i.chain.flatMap((c, n) => [n ? " › " : "", h("b", { textContent: c })])),
     i.howToReach && h("div", { class: "muted", textContent: "How to reach: " + i.howToReach }),
     i.appearsUnused && h("div", { class: "warn", textContent: "Warning: appears unused" }),
@@ -270,7 +285,8 @@ function panelView() {
 
 function render() {
   if (openId && !here(byId(openId))) openId = null;
-  uiLayer.replaceChildren(...[topbar(), drawer && h("div", { class: "drawer" }, closeBtn(), M.items.filter((i) => i.tier === "backstage").map(card)), panelView()].filter(Boolean));
+  uiLayer.replaceChildren(...(view ? [openId && !els.has(openId) && h("div", { class: "bar", textContent: "Not on this page before the change" })]
+    : [topbar(), drawer && h("div", { class: "drawer" }, closeBtn(), M.items.filter((i) => i.tier === "backstage").map(card)), panelView()]).filter(Boolean));
   for (const i of onRoute()) {
     if (outlines.has(i.id)) continue;
     // only the small button takes clicks, so a closed overlay doesn't cover the app's controls
@@ -286,7 +302,8 @@ function render() {
     o.className = "outline" + (id === openId ? " open" : "") + ({ approved: " ok", rejected: " rej", comment: " cmt" }[i.decision] ?? "");
     const [label, btn] = o.firstChild.children;
     // decided items collapse to a symbol so they stop covering the app
-    label.textContent = { approved: "✓", rejected: "✕", comment: "💬" }[i.decision] ?? "DELTAVIEW/" + M.ref;
+    label.textContent = view ? "BEFORE" : { approved: "✓", rejected: "✕", comment: "💬" }[i.decision] ?? "DELTAVIEW/" + M.ref;
+    btn.hidden = view;
     o.firstChild.title = btn.title = i.title;
     btn.ariaLabel = "Open " + i.title;
   }
@@ -320,9 +337,10 @@ function place() {
   }
   const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.[0].getBoundingClientRect();
   if (p) {
-    const w = p.offsetWidth || 440;
-    const right = r ? r.right + 12 : innerWidth - w - 12;
-    const left = r ? (right + w <= innerWidth - 8 ? right : Math.max(8, r.left - w - 12)) : right;
+    // with the before view open, the panel stays in the left half, next to the current page
+    const w = p.offsetWidth || 440, vw = beforeLayer.firstChild ? innerWidth / 2 : innerWidth;
+    const right = r ? r.right + 12 : vw - w - 12;
+    const left = r ? (right + w <= vw - 8 ? right : Math.max(8, r.left - w - 12)) : right;
     p.style.left = left + "px";
     p.style.top = Math.max(8, Math.min(r ? r.top : 44, innerHeight - p.offsetHeight - 8)) + "px";
   }
@@ -331,6 +349,7 @@ function place() {
 
 async function start() {
   M = (await api("manifest")).body;
+  view = M.mode === "base";
   const hash = /dv=([^&]+)/.exec(location.hash)?.[1];
   const target = hash && byId(decodeURIComponent(hash));
   document.documentElement.append(host);
@@ -339,7 +358,8 @@ async function start() {
   new MutationObserver(() => { if (!t) t = setTimeout(() => { t = null; const sig = location.pathname + [...els.keys()].join(); resolveAll(); if (location.pathname + [...els.keys()].join() !== sig) render(); }, 200); })
     .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id", "data-testid"] });
   // open from #dv= only if we're on the item's page: a redirect (e.g. to /login) keeps the hash and would loop
-  if (target && (here(target) || target.tier === "backstage" || (!target.route && !target.selector))) openItem(target);
+  if (view) { if (target) openId = pendingScroll = target.id; resolveAll(); render(); }
+  else if (target && (here(target) || target.tier === "backstage" || (!target.route && !target.selector))) openItem(target);
   else { if (hash) history.replaceState(history.state, "", location.pathname + location.search); render(); }
   addEventListener("hashchange", () => { const i = byId(decodeURIComponent(/dv=([^&]+)/.exec(location.hash)?.[1] ?? "")); if (i) openItem(i); });
   for (const m of ["pushState", "replaceState"]) { const o = history[m]; history[m] = function (...a) { const x = o.apply(this, a); setTimeout(() => { resolveAll(); render(); }, 0); return x; }; }

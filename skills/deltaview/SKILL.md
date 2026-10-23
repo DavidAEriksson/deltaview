@@ -107,11 +107,16 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
 ## 8. Serve
 
 1. If the dev server isn't running (e.g. when resuming), start it as in step 7 "Start the app".
-2. Pick a free port: `node -e 's=require("net").createServer().listen(0,()=>{console.log(s.address().port);s.close()})'`.
-3. Start `DV serve --manifest <manifest> --target <devUrl> --port <port>` with Bash `run_in_background`. Its first output line is `{"proxyUrl":"…","port":…}`. If it exits with `deltaview: …` instead, show the error and pick another port once.
-4. `tabs_context_mcp` (needed when resuming, which skips step 7), then `tabs_create_mcp` and `navigate` to `proxyUrl` (keep `#` fragments off). Tell the user:
+2. Before/after (optional). If there is at least one direct or indirect item, ask: "Also start the base version (`<target>` at `<baseSha>`) for a side-by-side before/after view? It takes a second install and dev server." If yes:
+   1. `<bwt>` = a new `mktemp -d`. `git -C <main> worktree add --detach <bwt> <baseSha>`, copy the env files into `<bwt>` with the step 4.2 command, and install as in step 4.4.
+   2. Start its dev server as in step 7 "Start the app", in `<bwt>`. It must listen on a different port than `<devUrl>`: most dev servers pick the next free port; if it fails because the port is taken, pass the framework's port flag with a free port. `<baseDevUrl>` = the URL it prints.
+   3. If the install or start fails, tell the user, remove `<bwt>` and continue without before/after.
+3. Pick a free port: `node -e 's=require("net").createServer().listen(0,()=>{console.log(s.address().port);s.close()})'`.
+4. Start `DV serve --manifest <manifest> --target <devUrl> --port <port>` (plus `--base-target <baseDevUrl>` if step 2 started one) with Bash `run_in_background`. Its first output line is `{"proxyUrl":"…","port":…,"baseUrl":…}`. If it exits with `deltaview: …` instead, show the error and pick another port once.
+5. `tabs_context_mcp` (needed when resuming, which skips step 7), then `tabs_create_mcp` and `navigate` to `proxyUrl` (keep `#` fragments off). Tell the user:
    "Review is open in Chrome at <proxyUrl>. The Deltaview bar is bottom-left: click an item to see its diff and summary, then approve / reject (reason required) / comment. Keys: j/k previous/next item, n next undecided, a/r/c approve/reject/comment, Esc close. Backstage items are in the drawer. Click **Finish review** when done. If the app needs a login, log in yourself in that tab."
-5. Don't poll. The serve process exits when the reviewer clicks Finish, and you're re-invoked then. Decisions are saved to `<manifest>` immediately; if the session is interrupted, running `/deltaview <ref>` again resumes.
+   With before/after, add: "**Before ⇄ after** in an item's panel shows the same page before the change on the right."
+6. Don't poll. The serve process exits when the reviewer clicks Finish, and you're re-invoked then. Decisions are saved to `<manifest>` immediately; if the session is interrupted, running `/deltaview <ref>` again resumes.
 
 ## 9. On server exit
 
@@ -121,5 +126,5 @@ Item shape (the CLI sets `visuallyVerified`, `decision`, `comment`, `decidedAt`)
    - the test result and any new env vars;
    - `<manifest>` and the sibling `.md` path.
    If GitHub posting failed, the overlay showed the error and the reviewer can click Finish again; the manifest's `error` field holds it.
-2. Stop the dev server (stop its background task, or kill the process listening on the dev port). Run `git -C <main> worktree remove --force <wt>` (`--force` because install/build artifacts are untracked), then `rm -rf <wt>` if it remains.
+2. Stop the dev server (stop its background task, or kill the process listening on the dev port), and the base dev server if step 8.2 started one. Run `git -C <main> worktree remove --force <wt>` (`--force` because install/build artifacts are untracked), then `rm -rf <wt>` if it remains; the same for `<bwt>`.
 3. If the serve process exited with an error (non-zero), show the error, stop the dev server and keep `<wt>` so the user can retry; tell them its path.

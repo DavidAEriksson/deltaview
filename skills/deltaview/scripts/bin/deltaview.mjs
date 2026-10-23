@@ -75,22 +75,29 @@ function addItems(argv) {
 }
 
 function serve(argv) {
-  const { values: v } = parseArgs({ args: argv, options: { manifest: { type: "string" }, target: { type: "string" }, port: { type: "string" } } });
+  const { values: v } = parseArgs({ args: argv, options: { manifest: { type: "string" }, target: { type: "string" }, port: { type: "string" }, "base-target": { type: "string" } } });
   for (const k of ["manifest", "target", "port"]) if (!v[k]) fail(`serve: missing --${k}`);
-  const { server, finished } = createServer({ manifestPath: v.manifest, target: v.target, postReview });
-  server.on("error", (e) => fail(e.code === "EADDRINUSE" ? `port ${v.port} is already in use` : e.message));
   // Same hostname as the dev server so cookies (scoped per host, not port) carry over; still loopback-only.
   const host = new URL(v.target).hostname;
-  server.listen(Number(v.port), host.replace(/^\[|\]$/g, ""), () => {
-    const port = server.address().port;
-    if (host === "localhost") { // localhost may resolve to either loopback family; serve both
-      const other = net.createServer((sock) => server.emit("connection", sock));
-      other.on("error", () => {}); // shortcut: IPv6 loopback may be unavailable, IPv4 alone then
-      other.listen(port, server.address().family === "IPv6" ? "127.0.0.1" : "::1");
-    }
-    console.log(JSON.stringify({ proxyUrl: `http://${host}:${port}`, port }));
-  });
-  finished.then((r) => { console.log(JSON.stringify({ done: true, ...r })); process.exit(0); });
+  const listen = (server, port, then) => {
+    server.on("error", (e) => fail(e.code === "EADDRINUSE" ? `port ${port} is already in use` : e.message));
+    server.listen(port, host.replace(/^\[|\]$/g, ""), () => {
+      const p = server.address().port;
+      if (host === "localhost") { // localhost may resolve to either loopback family; serve both
+        const other = net.createServer((sock) => server.emit("connection", sock));
+        other.on("error", () => {}); // shortcut: IPv6 loopback may be unavailable, IPv4 alone then
+        other.listen(p, server.address().family === "IPv6" ? "127.0.0.1" : "::1");
+      }
+      then(`http://${host}:${p}`, p);
+    });
+  };
+  const main = (baseUrl) => {
+    const { server, finished } = createServer({ manifestPath: v.manifest, target: v.target, postReview, baseUrl });
+    listen(server, Number(v.port), (proxyUrl, port) => console.log(JSON.stringify({ proxyUrl, port, baseUrl })));
+    finished.then((r) => { console.log(JSON.stringify({ done: true, ...r })); process.exit(0); });
+  };
+  if (!v["base-target"]) return main(null);
+  listen(createServer({ manifestPath: v.manifest, target: v["base-target"], mode: "base" }).server, 0, main);
 }
 
 const [cmd, ...rest] = process.argv.slice(2);

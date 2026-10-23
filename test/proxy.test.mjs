@@ -267,3 +267,19 @@ test("proxies an https dev server with a self-signed cert, including upgrades", 
     assert.match(echoed, /^HTTP\/1.1 101/);
   } finally { await close(server); target.closeAllConnections?.(); await new Promise((r) => target.close(r)); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("base mode: manifest says mode base, POSTs are refused, x-frame-options stripped", async () => {
+  const target = http.createServer((q, s) => { s.writeHead(200, { "content-type": "text/html", "x-frame-options": "DENY" }); s.end("<head></head>"); });
+  const tport = await listen(target);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dv-"));
+  const manifestPath = path.join(dir, "m.json");
+  fs.writeFileSync(manifestPath, JSON.stringify(baseManifest()));
+  const { server } = createServer({ manifestPath, target: `http://127.0.0.1:${tport}`, mode: "base" });
+  const port = await listen(server);
+  try {
+    assert.equal(JSON.parse((await req(port, "/__deltaview/manifest")).text).mode, "base");
+    assert.equal((await decide(port, { itemId: "i1", decision: "approved" })).status, 403);
+    assert.equal(JSON.parse(fs.readFileSync(manifestPath, "utf8")).items[0].decision, null);
+    assert.equal((await req(port, "/")).headers["x-frame-options"], undefined);
+  } finally { await close(server); await close(target); fs.rmSync(dir, { recursive: true, force: true }); }
+});
