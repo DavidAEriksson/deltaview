@@ -1,4 +1,4 @@
-import { toBlocks, progress, itemsForPath, canSubmit } from "./logic.mjs";
+import { toBlocks, progress, itemsForPath, canSubmit, nextItem, changeSpan } from "./logic.mjs";
 
 const CSS = `
 :host{all:initial}
@@ -21,6 +21,7 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .outline{position:fixed;border:2px solid #5ea1f0;background:rgba(94,161,240,.08);display:none}
 .outline.open{border-color:#fff;background:rgba(94,161,240,.18)}
 .outline.ok{border-color:#5fb584}.outline.rej{border-color:#f08080}.outline.cmt{border-color:#d9822b}
+.ghost{position:fixed;border:1px dashed;border-color:inherit;opacity:.6;pointer-events:none}
 .outline.ok .chip{color:#5fb584}.outline.rej .chip{color:#f08080}.outline.cmt .chip{color:#d9822b}
 .grip{cursor:move;color:#8a96a3;user-select:none;touch-action:none;padding:0 2px}
 .chip{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;background:#111;color:#5ea1f0;border:1px solid #2c4155;padding:0 0 0 6px;white-space:nowrap;line-height:16px;font-size:11px}
@@ -35,6 +36,7 @@ button.sel{background:#2c4155;color:#fff}button.go{background:#5ea1f0;color:#0b1
 .blk{padding:4px 8px;white-space:pre-wrap;word-break:break-all}
 .blk.add{background:#2d4a2d;color:#5fb584}.blk.change{background:#503615;color:#d9822b}
 .blk.del{background:#6e4343;color:#f08080}.blk.ctx{color:#5c6773}
+.ln{color:#5c6773;user-select:none}.hl{background:#7a4f17;color:#ffcf8a}
 .tag{display:inline-block;color:#d9822b;border:1px solid #d9822b;padding:0 5px;margin-bottom:4px}
 .act{margin-top:8px;padding:8px;background:#162430;border:1px solid #2c4155}
 .act textarea{width:100%;height:56px;margin:6px 0;background:#0b1520;color:#cfd8e3;border:1px solid #2c4155;padding:4px}
@@ -56,10 +58,10 @@ const api = async (path, body) => {
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
 
-let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null;
+let barOpen = false, highlights = true, barPos = null, M, openId = null, drawer = false, menu = false, finishMsg = null, pendingScroll = null, cursor = null; // cursor: last opened item, for j/k/n
 try { barPos = JSON.parse(localStorage.getItem("deltaview:bar")); } catch {}
 const drafts = {}; // itemId -> { choice, comment, msg }
-const els = new Map(); // itemId -> resolved element
+const els = new Map(); // itemId -> matched elements; the first is the anchor, the rest other instances
 const outlines = new Map(); // itemId -> outline div
 
 const host = document.createElement("deltaview-root");
@@ -75,27 +77,70 @@ for (const t of ["keydown", "keyup", "keypress"]) host.addEventListener(t, (e) =
 const byId = (id) => M.items.find((i) => i.id === id);
 const onRoute = () => itemsForPath(M.items, location.pathname);
 const here = (i) => itemsForPath([i], location.pathname).length > 0;
-const resolve = (i) => { try { return i.selector ? document.querySelector(i.selector) : null; } catch { return null; } };
+const resolve = (i) => { try { return i.selector ? [...document.querySelectorAll(i.selector)] : []; } catch { return []; } };
 
 function resolveAll() {
   const cur = new Set(onRoute().map((i) => i.id));
   for (const id of [...els.keys()]) if (!cur.has(id)) els.delete(id);
   for (const i of onRoute()) {
-    const el = resolve(i);
-    el ? els.set(i.id, el) : els.delete(i.id);
+    const list = resolve(i);
+    list.length ? els.set(i.id, list) : els.delete(i.id);
   }
   if (pendingScroll && els.has(pendingScroll)) {
-    els.get(pendingScroll).scrollIntoView({ block: "center" });
+    els.get(pendingScroll)[0].scrollIntoView({ block: "center" });
     pendingScroll = null;
   }
 }
 
+const cardEl = (id) => [...uiLayer.querySelectorAll(".card")].find((c) => c.dataset.item === id);
+
 function openItem(i) {
+  if (!i) return;
   if (i.tier === "backstage" || (!i.route && !i.selector)) { drawer = true; openId = null; }
   else if (!here(i)) { location.href = i.route + "#dv=" + i.id; return; }
   else { openId = i.id; drawer = false; pendingScroll = i.id; resolveAll(); }
+  cursor = i.id;
   menu = false;
   render();
+  if (drawer) cardEl(i.id)?.scrollIntoView({ block: "start" });
+}
+
+const nextUndecided = () => openItem(nextItem(M.items, cursor, 1, (i) => !i.decision));
+// the item a/r/c act on: the open panel, or the drawer card last opened
+const active = () => byId(openId) ?? (drawer ? byId(cursor) : null);
+
+async function save(i, decision, comment) {
+  const r = await api("decision", { itemId: i.id, decision, comment });
+  if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); delete drafts[i.id]; }
+  else draft(i).msg = r.body.error ?? "Could not save decision";
+  render();
+}
+
+function choose(c) {
+  const i = active();
+  if (!i) return;
+  draft(i).choice = c;
+  render();
+  cardEl(i.id)?.querySelector("textarea").focus();
+}
+
+const keys = {
+  j: () => openItem(nextItem(M.items, cursor, 1)),
+  k: () => openItem(nextItem(M.items, cursor, -1)),
+  n: nextUndecided,
+  a: () => { const i = active(); if (i) save(i, "approved", draft(i).comment); },
+  r: () => choose("rejected"),
+  c: () => choose("comment"),
+};
+
+function onKey(e) {
+  if (e.key === "Escape") { if (openId || drawer || menu) closeAll(); return; }
+  const t = e.composedPath()[0];
+  // never steal keys from text fields (the app's or ours) or from shortcuts with modifiers
+  if (e.ctrlKey || e.metaKey || e.altKey || t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !keys[e.key]) return;
+  e.preventDefault();
+  e.stopPropagation();
+  keys[e.key]();
 }
 
 function closeAll() { openId = null; drawer = false; menu = false; render(); }
@@ -106,8 +151,19 @@ function diffView(i) {
   return i.hunkIds.map((id) => {
     const hk = M.hunks[id];
     if (!hk) return null;
+    const w = String(Math.max(0, ...hk.lines.map((l) => l.newLine ?? l.oldLine))).length;
     return h("div", {}, h("div", { class: "file", textContent: hk.file + (hk.status !== "modified" ? ` (${hk.status})` : "") }),
-      toBlocks(hk.lines).map((b) => h("div", { class: "blk " + b.kind, textContent: b.lines.map((l) => (l.type === "add" ? "+" : l.type === "del" ? "-" : " ") + l.text).join("\n") })));
+      toBlocks(hk.lines).map((b) => {
+        const dels = b.lines.filter((l) => l.type === "del"), adds = b.lines.filter((l) => l.type === "add");
+        return h("div", { class: "blk " + b.kind }, b.lines.map((l) => {
+          // in a change block the k-th removed line pairs with the k-th added line
+          const pair = b.kind === "change" && (l.type === "del" ? adds[dels.indexOf(l)] : dels[adds.indexOf(l)]);
+          const [p, s] = pair ? changeSpan(l.text, pair.text) : [0, 0], end = l.text.length - s;
+          return h("div", {}, h("span", { class: "ln", textContent: String(l.newLine ?? l.oldLine).padStart(w) + " " }),
+            l.type === "add" ? "+" : l.type === "del" ? "-" : " ",
+            p + s ? [l.text.slice(0, p), h("span", { class: "hl", textContent: l.text.slice(p, end) }), l.text.slice(end)] : l.text);
+        }));
+      }));
   });
 }
 
@@ -119,14 +175,9 @@ function card(i) {
   const btns = ["approved", "rejected", "comment"].map((c) => h("button", { class: d.choice === c ? "sel" : "", textContent: { approved: "Approve", rejected: "Reject", comment: "Comment" }[c], onclick: () => { d.choice = c; btns.forEach((b, n) => b.classList.toggle("sel", ["approved", "rejected", "comment"][n] === c)); sync(); } }));
   const sync = () => { submit.disabled = !d.choice || !canSubmit(d.choice, ta.value); };
   ta.addEventListener("input", () => { d.comment = ta.value; sync(); });
-  submit.addEventListener("click", async () => {
-    submit.disabled = true;
-    const r = await api("decision", { itemId: i.id, decision: d.choice, comment: ta.value });
-    if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); d.msg = ""; render(); }
-    else { d.msg = r.body.error ?? "Could not save decision"; msg.textContent = d.msg; sync(); }
-  });
+  submit.addEventListener("click", () => { submit.disabled = true; save(i, d.choice, ta.value); });
   sync();
-  return h("div", { class: "card" },
+  const c = h("div", { class: "card" },
     i.tier === "backstage" && h("div", { class: "tag", textContent: "Not visually verified" }),
     h("h3", { textContent: i.title }),
     i.chain.length > 0 && h("div", { class: "crumbs" }, i.chain.flatMap((c, n) => [n ? " › " : "", h("b", { textContent: c })])),
@@ -138,12 +189,10 @@ function card(i) {
     h("div", { class: "act" },
       h("div", { class: i.decision ? "ok" : "muted", textContent: i.decision ? "Decision: " + i.decision : "No decision yet" }),
       h("div", {}, btns), ta, submit,
-      i.decision && h("button", { textContent: "Reset", title: "Clear the decision", style: "margin-left:8px", onclick: async () => {
-        const r = await api("decision", { itemId: i.id, decision: null });
-        if (r.status === 200) { M.items = M.items.map((x) => (x.id === i.id ? r.body : x)); delete drafts[i.id]; render(); }
-        else { msg.textContent = r.body.error ?? "Could not reset"; }
-      } }),
+      i.decision && h("button", { textContent: "Reset", title: "Clear the decision", style: "margin-left:8px", onclick: () => save(i, null) }),
       msg));
+  c.dataset.item = i.id;
+  return c;
 }
 
 function topbar() {
@@ -164,6 +213,7 @@ function topbar() {
     h("span", { class: "grip", textContent: "⠿", title: "Drag to move", onpointerdown: drag }),
     h("span", { class: "brand", textContent: "DELTAVIEW/" + M.ref }),
     h("span", { textContent: `${done}/${total} reviewed` }),
+    h("button", { textContent: "Next ▸", title: "Next undecided item (n)", disabled: done === total, onclick: nextUndecided }),
     h("button", { textContent: full ? "▾" : "▴", title: full ? "Collapse" : "Expand", onclick: () => { barOpen = !barOpen; menu = false; render(); } }),
     h("button", { class: highlights ? "" : "sel", textContent: highlights ? "Hide highlights" : "Show highlights", onclick: () => { highlights = !highlights; outlineLayer.style.display = highlights ? "" : "none"; render(); } }),
     full && t && h("span", { class: t.passed ? "ok" : "bad", textContent: `tests: ${t.passed ? "passed" : "failed"} (${t.summary})` }),
@@ -172,7 +222,8 @@ function topbar() {
       : h("span", { class: finishMsg.bad ? "bad" : finishMsg.warn ? "warn" : "ok", textContent: finishMsg.text })),
     full && h("button", { textContent: "Items ▾", onclick: () => { menu = !menu; render(); } }),
     full && h("button", { class: drawer ? "sel" : "", textContent: "Backstage", onclick: () => { drawer = !drawer; menu = false; render(); } }),
-    full && finish);
+    full && finish,
+    full && h("span", { class: "muted", textContent: "keys: j/k prev/next · n undecided · a/r/c decide · esc close" }));
   if (barPos) Object.assign(bar.style, { left: Math.min(barPos.x, innerWidth - 120) + "px", top: Math.min(barPos.y, innerHeight - 40) + "px", bottom: "auto" });
   return bar;
 }
@@ -240,9 +291,14 @@ function render() {
 
 function place() {
   for (const [id, o] of outlines) {
-    const el = els.get(id), r = el?.isConnected && el.getBoundingClientRect();
+    const [el, ...extra] = els.get(id) ?? [], r = el?.isConnected && el.getBoundingClientRect();
     if (!r || (!r.width && !r.height)) { o.style.display = "none"; continue; }
     Object.assign(o.style, { display: "block", left: r.left - 3 + "px", top: r.top - 3 + "px", width: r.width + 6 + "px", height: r.height + 6 + "px" });
+    // other instances of a shared component get a dim ghost outline; read all rects before writing styles
+    while (o.children.length - 1 < extra.length) o.append(h("div", { class: "ghost" }));
+    while (o.children.length - 1 > extra.length) o.lastChild.remove();
+    extra.map((e) => e.isConnected && e.getBoundingClientRect()).forEach((g, n) => Object.assign(o.children[n + 1].style,
+      g && (g.width || g.height) ? { display: "", left: g.left - 2 + "px", top: g.top - 2 + "px", width: g.width + 4 + "px", height: g.height + 4 + "px" } : { display: "none" }));
     // keep the chip on screen: below the element when there's no room above, shifted left at the right edge
     const c = o.firstChild;
     c.style.cssText = "";
@@ -259,7 +315,7 @@ function place() {
     c.style.visibility = hit ? "hidden" : "";
     if (!hit) shown.push(b);
   }
-  const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.getBoundingClientRect();
+  const p = uiLayer.querySelector(".panel"), r = p && els.get(p.dataset.item)?.[0].getBoundingClientRect();
   if (p) {
     const w = p.offsetWidth || 440;
     const right = r ? r.right + 12 : innerWidth - w - 12;
@@ -284,7 +340,7 @@ async function start() {
   else { if (hash) history.replaceState(history.state, "", location.pathname + location.search); render(); }
   addEventListener("hashchange", () => { const i = byId(decodeURIComponent(/dv=([^&]+)/.exec(location.hash)?.[1] ?? "")); if (i) openItem(i); });
   for (const m of ["pushState", "replaceState"]) { const o = history[m]; history[m] = function (...a) { const x = o.apply(this, a); setTimeout(() => { resolveAll(); render(); }, 0); return x; }; }
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && (openId || drawer || menu)) closeAll(); }, true);
+  addEventListener("keydown", onKey, true);
   addEventListener("popstate", () => { resolveAll(); render(); });
   place();
 }

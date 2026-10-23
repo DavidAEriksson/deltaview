@@ -1,6 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { toBlocks, progress, itemsForPath, canSubmit } from "../skills/deltaview/scripts/overlay/logic.mjs";
+import { toBlocks, progress, itemsForPath, canSubmit, nextItem, changeSpan } from "../skills/deltaview/scripts/overlay/logic.mjs";
+
+test("changeSpan marks whole changed words, keeps shared prefix/suffix", () => {
+  const mid = (a, b) => { const [p, s] = changeSpan(a, b); return [a.slice(p, a.length - s), b.slice(p, b.length - s)]; };
+  assert.deepEqual(mid("const total = sum(a);", "const total = sum(b);"), ["a", "b"]);
+  assert.deepEqual(mid("color: red;", "color: green;"), ["red", "green"]);
+  assert.deepEqual(mid("fooBar()", "fooBaz()"), ["fooBar", "fooBaz"]);
+  assert.deepEqual(mid("x", "x"), ["", ""]);
+  assert.deepEqual(mid("abc", "xyz"), ["abc", "xyz"]);
+  assert.deepEqual(mid("a(1)", "a(1, 2)"), ["", ", 2"]);
+});
+
+test("nextItem steps and wraps both ways, starts at an end with no current", () => {
+  const items = ["a", "b", "c"].map((id) => ({ id }));
+  const at = (id, step) => nextItem(items, id, step)?.id;
+  assert.deepEqual([at("a", 1), at("c", 1), at("a", -1), at(null, 1), at(null, -1)], ["b", "a", "c", "a", "c"]);
+});
+
+test("nextItem filters with pick and returns null when only the current one matches", () => {
+  const items = [{ id: "a", decision: null }, { id: "b", decision: "approved" }, { id: "c", decision: null }];
+  const undecided = (i) => !i.decision;
+  assert.equal(nextItem(items, "a", 1, undecided).id, "c");
+  assert.equal(nextItem(items, "c", 1, undecided).id, "a");
+  assert.equal(nextItem([items[0]], "a", 1, undecided), null);
+  assert.equal(nextItem([], null), null);
+});
 
 const L = (type, text = "x") => ({ type, text });
 
