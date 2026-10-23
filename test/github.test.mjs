@@ -86,6 +86,7 @@ test("postReview passes JSON with commit_id to fake run and returns html_url", a
   const m = fx();
   let call;
   const run = async (cmd, args, input) => {
+    if (args.includes("-q")) return { stdout: "bbb\n" };
     call = { cmd, args, input };
     return { stdout: JSON.stringify({ html_url: "https://github.com/acme/shop/pull/7#pullrequestreview-1" }) };
   };
@@ -96,6 +97,22 @@ test("postReview passes JSON with commit_id to fake run and returns html_url", a
   const body = JSON.parse(call.input);
   assert.equal(body.commit_id, "bbb");
   assert.equal(body.event, "REQUEST_CHANGES");
+  assert.doesNotMatch(body.body, /head has since moved/);
+});
+
+test("postReview notes a moved PR head and still posts at the reviewed sha", async () => {
+  let input;
+  const run = async (cmd, args, i) => (args.includes("-q") ? { stdout: "ccc1234\n" } : ((input = JSON.parse(i)), { stdout: '{"html_url":"u"}' }));
+  await postReview(fx(), run);
+  assert.equal(input.commit_id, "bbb");
+  assert.match(input.body, /Reviewed at bbb; the PR head has since moved to ccc1234/);
+});
+
+test("postReview still posts when the head lookup fails", async () => {
+  let input;
+  const run = async (cmd, args, i) => { if (args.includes("-q")) throw new Error("404"); input = JSON.parse(i); return { stdout: '{"html_url":"u"}' }; };
+  assert.equal((await postReview(fx(), run)).url, "u");
+  assert.doesNotMatch(input.body, /head has since moved/);
 });
 
 test("postReview rejects with stderr when run fails", async () => {

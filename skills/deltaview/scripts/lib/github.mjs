@@ -58,7 +58,11 @@ export const defaultRun = (cmd, args, input) =>
   });
 
 export async function postReview(m, run = defaultRun) {
-  const payload = JSON.stringify({ commit_id: m.headSha, ...buildReview(m) });
+  const review = buildReview(m);
+  // a failed lookup must not block posting the review
+  const head = await run("gh", ["api", `repos/${m.repo}/pulls/${m.pr.number}`, "-q", ".head.sha"]).then((r) => r.stdout.trim(), () => m.headSha);
+  if (head !== m.headSha) review.body += `\n\n⚠ Reviewed at ${m.headSha.slice(0, 7)}; the PR head has since moved to ${head.slice(0, 7)}. Inline comments may show as outdated.`;
+  const payload = JSON.stringify({ commit_id: m.headSha, ...review });
   const { stdout } = await run("gh", ["api", `repos/${m.repo}/pulls/${m.pr.number}/reviews`, "--method", "POST", "--input", "-"], payload);
   return { url: JSON.parse(stdout).html_url };
 }
